@@ -1,0 +1,24 @@
+import {Schema, model} from "mongoose";
+
+const interactionSchema = new Schema({
+    drugA: { type: Schema.Types.ObjectId, ref: 'Drug', required: true },
+    drugB: { type: Schema.Types.ObjectId, ref: 'Drug', required: true },
+
+    riskLevel: {
+        type: String,
+        enum: ['minor', 'moderate', 'major', 'critical'],
+        required: true
+    },
+    colorCode: {
+        type: String,
+        enum: ['green', 'yellow', 'orange', 'red'],
+        required: true
+    },
+    description: { type: String, required: true },
+    actionRequired: { type: String }
+}, { timestamps: true });
+
+
+interactionSchema.index({ drugA: 1, drugB: 1 }, { unique: true });
+
+export const Interaction = model('Interaction', interactionSchema);
