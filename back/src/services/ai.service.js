@@ -38,7 +38,7 @@ export const normalizeInteractionText = async (rawText) => {
         "riskLevel", "description", and "actionRequired".
         "riskLevel" must contain EXACTLY one of the following values:
         "minor", "moderate", "major", or "critical".
-        "description" must contain a brief description of the interaction in 1–2 sentences.
+        "description" must contain a brief description of the interaction in 1-2 sentences.
         "actionRequired" must contain a clear and specific recommendation for the physician.
         Do not invent drug interactions, risks, dosages, contraindications, or other medical information.
         Base your analysis ONLY on the provided text.

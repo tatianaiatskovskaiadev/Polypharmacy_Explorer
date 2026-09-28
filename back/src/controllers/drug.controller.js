@@ -14,4 +14,4 @@ export const getDrugsBySymptom = async (req, res) => {
     const {text, drugIds} = req.body;
     const data = await drugService.searchDrugsBySymptom(text, drugIds);
     return res.status(200).json(data);
-}
+};

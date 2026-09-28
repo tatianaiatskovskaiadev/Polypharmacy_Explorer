@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+
 const { Schema, model } = mongoose;
 
 const drugSchema = new Schema({
@@ -7,10 +8,9 @@ const drugSchema = new Schema({
 
     guidelines: {
         source: { type: String, default: 'FDA' },
-        originalText: { type: String, required: true },
+        originalText: {type: String},
         embedding: {
-            type: [Number],
-            required: true
+            type: [Number]
         }
     }
 }, {

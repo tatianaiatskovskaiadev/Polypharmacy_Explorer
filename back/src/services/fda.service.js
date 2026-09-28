@@ -5,11 +5,21 @@ const REQUEST_TIMEOUT_MS = 10_000;
 
 const fetchLabels = async (search, limit) => {
     const url = `${FDA_LABEL_URL}?search=${encodeURIComponent(search)}&limit=${limit}`;
+
+    console.log('FDA search:', search);
+    console.log('FDA URL:', url);
+
     const response = await fetch(url, {signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)});
     // openFDA responds 404 when nothing matches the query
     if (response.status === 404) return [];
     if (!response.ok) {
-        throw new ExternalServiceError(`openFDA responded with ${response.status} ${response.statusText}`);
+        const body = await response.text();
+
+        console.error('openFDA error:', body);
+
+        throw new ExternalServiceError(
+            `openFDA responded with ${response.status} ${response.statusText}: ${body}`
+        );
     }
     const data = await response.json();
     return data.results ?? [];
@@ -25,7 +35,21 @@ export const fetchRawInteraction = async (drugA, drugB) => {
 
 export const fetchAnaloguesFromFDA = async (activeIngredient) => {
     try {
-        return await fetchLabels(`openfda.generic_name:${quote(activeIngredient)}`, 5);
+        const ingredients = activeIngredient
+            .split(';')
+            .map(item => item.trim())
+            .filter(Boolean);
+
+        const results = await Promise.all(
+            ingredients.map(ingredient =>
+                fetchLabels(
+                    `openfda.generic_name:${quote(ingredient)}`,
+                    5
+                )
+            )
+        );
+
+        return results.flat();
     } catch (error) {
         // Analogue search is best-effort: local results are still returned if FDA is unavailable
         console.error('Failed to fetch analogues from openFDA:', error);
