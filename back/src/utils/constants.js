@@ -27,6 +27,7 @@ export const COLOR_BY_RISK = {
     major: 'orange',
     critical: 'red'
 };
+export const INTERACTION_SYNC_CONCURRENCY = 3;
 
 export const VECTOR_SEARCH_INDEX = 'vector_index';
 export const DRUG_EMBEDDING_PATH = 'guidelines.embedding';

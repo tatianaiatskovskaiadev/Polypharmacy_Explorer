@@ -26,6 +26,12 @@ const buildEmbeddingText = (item) => {
     return limitText(sections.join('\n\n'), MAX_EMBEDDING_TEXT_LENGTH);
 };
 
+const hasReusableGuidelines = (drug) => (
+    Boolean(drug.guidelines?.originalText) &&
+    Array.isArray(drug.guidelines?.embedding) &&
+    drug.guidelines.embedding.length > 0
+);
+
 export const createDrug = async (drug) => {
     const {
         name,
@@ -99,6 +105,23 @@ export const getSimilarDrugs = async (text) => {
         if (existing.length > 0) {
 
             let drugFromDb = existing[0];
+
+            if (hasReusableGuidelines(drugFromDb)) {
+                const isAlreadyInList =
+                    savedDrugs.some(
+                        drug =>
+                            drug._id.toString() ===
+                            drugFromDb._id.toString()
+                    );
+
+
+                if (!isAlreadyInList) {
+                    savedDrugs.push(drugFromDb);
+                }
+
+
+                continue;
+            }
 
             const embedding =
                 await createVector(embeddingText);

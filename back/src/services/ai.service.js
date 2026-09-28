@@ -11,16 +11,28 @@ import {
 
 const openai = new OpenAI();
 
+const callOpenAI = async (operation) => {
+    try {
+        return await operation();
+    } catch (error) {
+        if (error instanceof ExternalServiceError) {
+            throw error;
+        }
+
+        throw new ExternalServiceError(`OpenAI request failed: ${error.message}`);
+    }
+};
+
 export const createVector = async (originalText) => {
     const input = originalText.length > MAX_EMBEDDING_INPUT_LENGTH
         ? originalText.slice(0, MAX_EMBEDDING_INPUT_LENGTH)
         : originalText;
 
-    const embedding = await openai.embeddings.create({
+    const embedding = await callOpenAI(() => openai.embeddings.create({
         model: OPENAI_EMBEDDING_MODEL,
         input,
         encoding_format: OPENAI_EMBEDDING_ENCODING_FORMAT,
-    })
+    }))
     return embedding.data[0].embedding
 }
 
@@ -54,7 +66,7 @@ export const normalizeInteractionText = async (rawText) => {
         }
         `;
 
-    const response = await openai.chat.completions.create({
+    const response = await callOpenAI(() => openai.chat.completions.create({
         model: OPENAI_CHAT_MODEL,
         messages: [
             {
@@ -70,7 +82,7 @@ export const normalizeInteractionText = async (rawText) => {
             type: OPENAI_JSON_RESPONSE_FORMAT,
         },
         temperature: 0,
-    });
+    }));
 
     let parsed;
     try {

@@ -95,4 +95,71 @@ describe('drug service', () => {
         expect(createVector).toHaveBeenCalledWith(expect.any(String));
         expect(createVector.mock.calls[0][0].length).toBeLessThanOrEqual(6_000);
     });
+
+    test('reuses cached FDA guidelines and embedding for existing drugs', async () => {
+        const cachedDrug = {
+            _id: 'drug-1',
+            name: 'Ibuprofen',
+            activeIngredient: 'ibuprofen',
+            guidelines: {
+                originalText: 'cached FDA text',
+                embedding: [0.1, 0.2]
+            }
+        };
+
+        getDrugByName
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([cachedDrug]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([
+            {
+                openfda: {
+                    brand_name: ['Ibuprofen'],
+                    generic_name: ['ibuprofen']
+                },
+                warnings: ['fresh FDA warning text']
+            }
+        ]);
+
+        await expect(getSimilarDrugs('ibuprofen')).resolves.toEqual([cachedDrug]);
+        expect(createVector).not.toHaveBeenCalled();
+        expect(updateDrug).not.toHaveBeenCalled();
+    });
+
+    test('refreshes existing drug only when cached embedding is missing', async () => {
+        const staleDrug = {
+            _id: 'drug-1',
+            name: 'Ibuprofen',
+            activeIngredient: 'ibuprofen',
+            guidelines: {
+                originalText: 'old FDA text',
+                embedding: []
+            }
+        };
+
+        getDrugByName
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([staleDrug]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([
+            {
+                openfda: {
+                    brand_name: ['Ibuprofen'],
+                    generic_name: ['ibuprofen']
+                },
+                warnings: ['fresh FDA warning text']
+            }
+        ]);
+        createVector.mockResolvedValueOnce([0.3, 0.4]);
+        updateDrug.mockResolvedValueOnce({
+            ...staleDrug,
+            guidelines: {
+                originalText: 'fresh FDA warning text',
+                embedding: [0.3, 0.4]
+            }
+        });
+
+        await getSimilarDrugs('ibuprofen');
+
+        expect(createVector).toHaveBeenCalledTimes(1);
+        expect(updateDrug).toHaveBeenCalledTimes(1);
+    });
 });
