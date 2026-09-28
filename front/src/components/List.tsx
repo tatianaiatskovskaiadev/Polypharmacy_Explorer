@@ -4,13 +4,15 @@ type Props = {
     data?: Drug[];
     isLoading: boolean;
     isError: boolean;
+    errorMessage?: string;
     onAdd: (drug: Drug) => void;
 }
 
-const List = ({data, isLoading, isError, onAdd} : Props) => {
+const List = ({data, isLoading, isError, errorMessage, onAdd} : Props) => {
     if (isLoading) return <div>Loading...</div>;
-    if (isError) return <div>Error...</div>;
+    if (isError) return <div className="m-2 text-sm text-red-700">{errorMessage ?? 'Unable to load drugs.'}</div>;
     if (!data) return null;
+    if (data.length === 0) return <div className="m-2 text-sm text-gray-500">No drugs found.</div>;
 
     return (
         <ul className="m-2 border border-gray-200 rounded-md w-fit">
