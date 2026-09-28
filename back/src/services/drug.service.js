@@ -2,6 +2,15 @@ import * as drugRepository from '../repository/drug.repository.js';
 import {createVector} from './ai.service.js';
 import {fetchAnaloguesFromFDA} from './fda.service.js';
 
+const MAX_EMBEDDING_TEXT_LENGTH = 6_000;
+const MAX_SECTION_LENGTH = 1_500;
+
+const limitText = (text, maxLength) => (
+    text.length > maxLength
+        ? text.slice(0, maxLength)
+        : text
+);
+
 const buildEmbeddingText = (item) => {
     const sections = [
         item.boxed_warning?.[0],
@@ -10,10 +19,13 @@ const buildEmbeddingText = (item) => {
         item.adverse_reactions?.[0],
         item.contraindications?.[0],
         item.drug_interactions?.[0],
-        item.indications_and_usage?.[0]
-    ].filter(Boolean);
+        item.indications_and_usage?.[0],
+        item.description?.[0]
+    ]
+        .filter(Boolean)
+        .map(section => limitText(section, MAX_SECTION_LENGTH));
 
-    return sections.join('\n\n');
+    return limitText(sections.join('\n\n'), MAX_EMBEDDING_TEXT_LENGTH);
 };
 
 export const createDrug = async (drug) => {
@@ -52,6 +64,10 @@ export const getSimilarDrugs = async (text) => {
 
     const fdaAnalogues =
         await fetchAnaloguesFromFDA(searchIngredient);
+
+    if (fdaAnalogues.length === 0) {
+        return localDrugs;
+    }
 
     const savedDrugs = [];
 
@@ -160,7 +176,9 @@ export const getSimilarDrugs = async (text) => {
     }
 
 
-    return savedDrugs;
+    return savedDrugs.length > 0
+        ? savedDrugs
+        : localDrugs;
 };
 
 export const searchDrugsBySymptom = async (

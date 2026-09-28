@@ -3,6 +3,7 @@ import Joi from "joi";
 import {ExternalServiceError} from "../utils/errors.js";
 
 const openai = new OpenAI();
+const MAX_EMBEDDING_INPUT_LENGTH = 8_000;
 
 export const RISK_LEVELS = ['minor', 'moderate', 'major', 'critical'];
 
@@ -14,9 +15,13 @@ const interactionResultSchema = Joi.object({
 });
 
 export const createVector = async (originalText) => {
+    const input = originalText.length > MAX_EMBEDDING_INPUT_LENGTH
+        ? originalText.slice(0, MAX_EMBEDDING_INPUT_LENGTH)
+        : originalText;
+
     const embedding = await openai.embeddings.create({
         model: "text-embedding-3-small",
-        input: originalText,
+        input,
         encoding_format: "float",
     })
     return embedding.data[0].embedding

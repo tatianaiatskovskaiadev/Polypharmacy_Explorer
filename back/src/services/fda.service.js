@@ -6,9 +6,6 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const fetchLabels = async (search, limit) => {
     const url = `${FDA_LABEL_URL}?search=${encodeURIComponent(search)}&limit=${limit}`;
 
-    console.log('FDA search:', search);
-    console.log('FDA URL:', url);
-
     const response = await fetch(url, {signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)});
     // openFDA responds 404 when nothing matches the query
     if (response.status === 404) return [];
@@ -43,7 +40,7 @@ export const fetchAnaloguesFromFDA = async (activeIngredient) => {
         const results = await Promise.all(
             ingredients.map(ingredient =>
                 fetchLabels(
-                    `openfda.generic_name:${quote(ingredient)}`,
+                    `openfda.generic_name:${quote(ingredient)} OR openfda.brand_name:${quote(ingredient)}`,
                     5
                 )
             )
