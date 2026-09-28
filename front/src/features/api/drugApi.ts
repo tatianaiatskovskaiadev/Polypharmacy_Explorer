@@ -1,5 +1,5 @@
 import {createApi, fetchBaseQuery} from "@reduxjs/toolkit/query/react";
-import type {CheckInteractionsRequest, Drug, Interaction, SymptomSearchRequest} from "../../utils/types";
+import type {CheckInteractionsRequest, CheckInteractionsResponse, Drug, SymptomSearchRequest} from "../../utils/types";
 
 export const drugApi = createApi({
     reducerPath: 'drugApi',
@@ -21,7 +21,7 @@ export const drugApi = createApi({
                 body: {text}
             })
         }),
-        getInteractions: builder.query<Interaction[], CheckInteractionsRequest>({
+        getInteractions: builder.query<CheckInteractionsResponse, CheckInteractionsRequest>({
             query: (body) => ({
                 url: '/interactions/check',
                 method: 'POST',

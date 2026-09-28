@@ -146,7 +146,27 @@ describe('interaction service', () => {
         fetchRawInteraction.mockRejectedValueOnce(new ExternalServiceError('openFDA responded with 500 Internal Server Error'));
         checkInteractionRepository.mockResolvedValue(cachedInteractions);
 
-        await expect(checkInteraction(['drug-a', 'drug-b'])).resolves.toEqual(cachedInteractions);
+        await expect(checkInteraction(['drug-a', 'drug-b'])).resolves.toEqual({
+            interactions: cachedInteractions,
+            failedPairs: [
+                {
+                    drugIdA: 'drug-a',
+                    drugIdB: 'drug-b',
+                    drugNameA: 'A',
+                    drugNameB: 'B',
+                    reason: 'openFDA responded with 500 Internal Server Error'
+                }
+            ]
+        });
         expect(checkInteractionRepository).toHaveBeenCalledWith(['drug-a', 'drug-b']);
+    });
+
+    test('returns empty partial response when fewer than two drugs are selected', async () => {
+        await expect(checkInteraction(['drug-a'])).resolves.toEqual({
+            interactions: [],
+            failedPairs: []
+        });
+        expect(getDrugsByIds).not.toHaveBeenCalled();
+        expect(checkInteractionRepository).not.toHaveBeenCalled();
     });
 });

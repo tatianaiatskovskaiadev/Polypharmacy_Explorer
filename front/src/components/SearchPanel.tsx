@@ -12,7 +12,7 @@ const SearchPanel = () => {
     const [activeDrugs, setActiveDrugs] = useState<Drug[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [getDrugs, {data: searchResults, isLoading, isError}] = useLazyGetDrugsQuery();
-    const [getInteractions, {data: interactions}] = useLazyGetInteractionsQuery()
+    const [getInteractions, {data: interactionResponse}] = useLazyGetInteractionsQuery()
 
     const [symptomText, setSymptomText] = useState('');
     const [searchBySymptoms, {data: highlightedDrugs}] = useSearchBySymptomsMutation()
@@ -72,7 +72,16 @@ const SearchPanel = () => {
                 </button>
             </label>
             <List data={searchResults} onAdd={handleAddDrug} isLoading={isLoading} isError={isError}/>
-            <GraphView highlightedDrugs={highlightedDrugs} data={activeDrugs} interactions={interactions}/>
+            {interactionResponse?.failedPairs.length ? (
+                <div className="m-2 text-sm text-yellow-700">
+                    Some interaction checks are temporarily unavailable. Showing cached and completed results.
+                </div>
+            ) : null}
+            <GraphView
+                highlightedDrugs={highlightedDrugs}
+                data={activeDrugs}
+                interactions={interactionResponse?.interactions}
+            />
         </div>
     );
 };

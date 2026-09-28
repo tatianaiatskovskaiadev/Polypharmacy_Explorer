@@ -21,9 +21,15 @@ const runWithConcurrency = async (items, limit, task) => {
 };
 
 export const checkInteraction = async (drugIds) => {
-    if (drugIds.length < 2) return [];
+    if (drugIds.length < 2) {
+        return {
+            interactions: [],
+            failedPairs: []
+        };
+    }
 
     const drugs = await drugRepository.getDrugsByIds(drugIds);
+    const failedPairs = [];
 
     const pairs = [];
     for (let i = 0; i < drugs.length; i++) {
@@ -41,10 +47,22 @@ export const checkInteraction = async (drugIds) => {
             if (!(error instanceof ExternalServiceError)) {
                 throw error;
             }
+
+            failedPairs.push({
+                drugIdA: drugA._id.toString(),
+                drugIdB: drugB._id.toString(),
+                drugNameA: searchNameA,
+                drugNameB: searchNameB,
+                reason: error.message
+            });
         }
     });
 
-    return await interactionRepository.checkInteraction(drugIds);
+    const interactions = await interactionRepository.checkInteraction(drugIds);
+    return {
+        interactions,
+        failedPairs
+    };
 }
 
 const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB) => {

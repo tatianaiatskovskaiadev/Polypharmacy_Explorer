@@ -26,6 +26,19 @@ export type CheckInteractionsRequest = {
     drugIds: string[];
 };
 
+export type FailedInteractionPair = {
+    drugIdA: string;
+    drugIdB: string;
+    drugNameA: string;
+    drugNameB: string;
+    reason: string;
+};
+
+export type CheckInteractionsResponse = {
+    interactions: Interaction[];
+    failedPairs: FailedInteractionPair[];
+};
+
 export type SymptomSearchRequest = {
     text: string;
     drugIds: string[];

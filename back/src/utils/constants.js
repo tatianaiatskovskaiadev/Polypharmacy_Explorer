@@ -3,11 +3,14 @@ export const ENV_VARS = {
     mongoUri: 'MONGO_URI',
     dbName: 'DB_NAME',
     corsOrigin: 'CORS_ORIGIN',
-    demoApiKey: 'DEMO_API_KEY'
+    demoApiKey: 'DEMO_API_KEY',
+    openAiApiKey: 'OPENAI_API_KEY',
+    nodeEnv: 'NODE_ENV'
 };
 
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_CORS_ORIGIN = 'http://localhost:5173';
+export const LOCAL_NODE_ENV_VALUES = ['development', 'dev', 'local', 'test'];
 
 export const FDA_LABEL_URL = 'https://api.fda.gov/drug/label.json';
 export const FDA_REQUEST_TIMEOUT_MS = 10_000;

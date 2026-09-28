@@ -24,6 +24,9 @@ This project turns that workflow into an interactive graph:
 - AI normalization with strict Joi validation before storing model output.
 - Symptom/risk semantic search over FDA label embeddings.
 - Centralized API validation and normalized error responses.
+- FDA retry/backoff and graceful degradation for interaction checks when external APIs are rate-limited.
+- Bounded concurrency and in-flight deduplication for expensive interaction analysis.
+- Demo API key gate and in-memory rate limit for write/AI-cost endpoints.
 - Backend tests for validation, error handling, canonical pair behavior, importable app setup, and long FDA label handling.
 
 ## Architecture
@@ -79,6 +82,7 @@ Required backend variables:
 
 ```env
 PORT=3000
+NODE_ENV=development
 MONGO_URI=mongodb://user:password@localhost:27017/?authSource=admin
 DB_NAME=polypharmacy
 OPENAI_API_KEY=sk-...
@@ -98,6 +102,8 @@ Frontend variable:
 VITE_API_URL=http://localhost:3000
 VITE_DEMO_API_KEY=change-me
 ```
+
+`OPENAI_API_KEY` is required at backend startup. `DEMO_API_KEY` is optional for local development, where the server prints a warning if it is missing; outside local runtime, for example `NODE_ENV=production`, startup fails without it.
 
 ## Setup
 
@@ -163,6 +169,17 @@ curl -X POST http://localhost:3000/interactions/check \
   -d "{\"drugIds\":[\"DRUG_ID_A\",\"DRUG_ID_B\"]}"
 ```
 
+Response shape:
+
+```json
+{
+  "interactions": [],
+  "failedPairs": []
+}
+```
+
+`failedPairs` is populated when one pair cannot be synced from FDA/OpenAI during a partial interaction check. The API still returns cached and successfully completed interactions.
+
 Highlight selected drugs by symptom or risk phrase:
 
 ```bash
@@ -194,12 +211,16 @@ Current backend test coverage focuses on:
 - Express app importability without starting the server
 - fallback behavior when openFDA returns no drug labels
 - long FDA label truncation before OpenAI embeddings
+- OpenAI and FDA external error mapping
+- bounded interaction sync concurrency
+- in-flight deduplication for concurrent interaction pair syncs
+- demo API key and rate-limit protection for costly endpoints
 
 Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 5 suites, 11 tests |
+| `cd back && npm test` | Passed: 8 suites, 25 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed, with 2 React warnings in `GraphView.tsx` |
 
@@ -224,19 +245,23 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 
 - **AI output is treated as untrusted input.** The backend validates normalized interaction data with Joi before it can be stored.
 - **Interaction pairs are canonicalized.** The repository stores drug pairs in stable order to avoid duplicate `A+B` and `B+A` records.
+- **Interaction analysis uses bounded concurrency.** Cold-cache pair analysis is parallelized with a small concurrency limit to reduce latency without overwhelming FDA/OpenAI.
+- **Concurrent pair syncs are deduplicated in-process.** Parallel requests for the same canonical pair share one in-flight Promise, avoiding duplicate FDA/OpenAI spend in a single Node process.
 - **Long FDA labels are bounded before embedding.** The service limits FDA text length to avoid OpenAI context-limit failures.
 - **Express app and server bootstrap are separated.** `src/app.js` can be imported by tests without opening a network port.
-- **openFDA enrichment is best-effort.** If openFDA has no matching labels, local search results can still be returned.
+- **openFDA calls use retry/backoff and best-effort degradation.** Rate-limited or unavailable FDA calls do not fail the entire interaction check; cached/successful interactions are still returned.
 - **Expensive endpoints are gated for demos.** When `DEMO_API_KEY` is configured, write/AI-cost routes require `x-demo-api-key`; they also have an in-memory rate limit.
+- **Runtime configuration fails fast.** The backend refuses to start without `OPENAI_API_KEY`; non-local runtimes also require `DEMO_API_KEY`.
 
 ## Limitations
 
 - This is not medical advice and must not be used for clinical decisions.
 - Backend is JavaScript while frontend is TypeScript; backend TypeScript migration is a future improvement.
-- Structured logging, request IDs, metrics, and retry/backoff are not fully implemented yet.
+- Structured logging, request IDs, and metrics are not fully implemented yet.
 - Docker Compose and CI/CD are not included yet.
 - Frontend UX is still prototype-level and needs stronger empty, loading, error, and removal states.
 - MongoDB Atlas Vector Search index setup must be configured outside the repository.
+- In-flight interaction deduplication is per Node process; multi-instance deployments need a distributed lock or persistent pending status.
 
 ## Roadmap
 
