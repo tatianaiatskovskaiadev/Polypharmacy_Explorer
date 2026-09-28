@@ -83,6 +83,7 @@ MONGO_URI=mongodb://user:password@localhost:27017/?authSource=admin
 DB_NAME=polypharmacy
 OPENAI_API_KEY=sk-...
 CORS_ORIGIN=http://localhost:5173
+DEMO_API_KEY=change-me
 ```
 
 Create frontend env:
@@ -95,6 +96,7 @@ Frontend variable:
 
 ```env
 VITE_API_URL=http://localhost:3000
+VITE_DEMO_API_KEY=change-me
 ```
 
 ## Setup
@@ -225,6 +227,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - **Long FDA labels are bounded before embedding.** The service limits FDA text length to avoid OpenAI context-limit failures.
 - **Express app and server bootstrap are separated.** `src/app.js` can be imported by tests without opening a network port.
 - **openFDA enrichment is best-effort.** If openFDA has no matching labels, local search results can still be returned.
+- **Expensive endpoints are gated for demos.** When `DEMO_API_KEY` is configured, write/AI-cost routes require `x-demo-api-key`; they also have an in-memory rate limit.
 
 ## Limitations
 

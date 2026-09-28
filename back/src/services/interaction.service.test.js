@@ -3,6 +3,7 @@ import {beforeEach, describe, expect, jest, test} from '@jest/globals';
 const getDrugsByIds = jest.fn();
 const checkInteractionRepository = jest.fn();
 const getInteractionPair = jest.fn();
+const toCanonicalPair = jest.fn((drugIdA, drugIdB) => [String(drugIdA), String(drugIdB)].sort());
 const fetchRawInteraction = jest.fn();
 const normalizeInteractionText = jest.fn();
 const upsertInteraction = jest.fn();
@@ -14,6 +15,7 @@ jest.unstable_mockModule('../repository/drug.repository.js', () => ({
 jest.unstable_mockModule('../repository/interaction.repository.js', () => ({
     checkInteraction: checkInteractionRepository,
     getInteractionPair,
+    toCanonicalPair,
     upsertInteraction
 }));
 
@@ -25,7 +27,7 @@ jest.unstable_mockModule('./ai.service.js', () => ({
     normalizeInteractionText
 }));
 
-const {checkInteraction} = await import('./interaction.service.js');
+const {checkInteraction, syncInteraction} = await import('./interaction.service.js');
 
 const createDeferred = () => {
     let resolve;
@@ -40,6 +42,7 @@ describe('interaction service', () => {
         getDrugsByIds.mockReset();
         checkInteractionRepository.mockReset();
         getInteractionPair.mockReset();
+        toCanonicalPair.mockClear();
         fetchRawInteraction.mockReset();
         normalizeInteractionText.mockReset();
         upsertInteraction.mockReset();
@@ -86,5 +89,45 @@ describe('interaction service', () => {
 
         expect(fetchRawInteraction).toHaveBeenCalledTimes(6);
         expect(maxInFlight).toBe(3);
+    });
+
+    test('deduplicates concurrent cold syncs for the same canonical pair', async () => {
+        const deferred = createDeferred();
+        const savedInteraction = {
+            _id: 'interaction-1',
+            drugA: 'drug-a',
+            drugB: 'drug-b'
+        };
+
+        getInteractionPair.mockResolvedValue(null);
+        fetchRawInteraction.mockImplementation(async () => {
+            await deferred.promise;
+            return 'FDA interaction text';
+        });
+        normalizeInteractionText.mockResolvedValue({
+            riskLevel: 'moderate',
+            description: 'Interaction summary',
+            actionRequired: 'Monitor patient'
+        });
+        upsertInteraction.mockResolvedValue(savedInteraction);
+
+        const firstSync = syncInteraction('drug-a', 'drug-b', 'A', 'B');
+        const secondSync = syncInteraction('drug-b', 'drug-a', 'B', 'A');
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(fetchRawInteraction).toHaveBeenCalledTimes(1);
+        expect(normalizeInteractionText).not.toHaveBeenCalled();
+
+        deferred.resolve();
+
+        await expect(Promise.all([firstSync, secondSync])).resolves.toEqual([
+            savedInteraction,
+            savedInteraction
+        ]);
+        expect(getInteractionPair).toHaveBeenCalledTimes(1);
+        expect(normalizeInteractionText).toHaveBeenCalledTimes(1);
+        expect(upsertInteraction).toHaveBeenCalledTimes(1);
     });
 });

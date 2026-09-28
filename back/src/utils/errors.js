@@ -18,6 +18,18 @@ export class ConflictError extends ApiError {
     }
 }
 
+export class UnauthorizedError extends ApiError {
+    constructor(message = 'Unauthorized') {
+        super(401, message);
+    }
+}
+
+export class TooManyRequestsError extends ApiError {
+    constructor(message = 'Too many requests') {
+        super(429, message);
+    }
+}
+
 export class ExternalServiceError extends ApiError {
     constructor(message = 'External service unavailable') {
         super(502, message);

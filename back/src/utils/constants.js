@@ -2,7 +2,8 @@ export const ENV_VARS = {
     port: 'PORT',
     mongoUri: 'MONGO_URI',
     dbName: 'DB_NAME',
-    corsOrigin: 'CORS_ORIGIN'
+    corsOrigin: 'CORS_ORIGIN',
+    demoApiKey: 'DEMO_API_KEY'
 };
 
 export const DEFAULT_PORT = 3000;
@@ -35,3 +36,6 @@ export const VECTOR_SIMILARITY_THRESHOLD = 0.6;
 export const VECTOR_CANDIDATES_MULTIPLIER = 20;
 
 export const ETL_BATCH_SIZE = 2000;
+
+export const EXPENSIVE_ENDPOINT_RATE_LIMIT_WINDOW_MS = 60_000;
+export const EXPENSIVE_ENDPOINT_RATE_LIMIT_MAX_REQUESTS = 30;

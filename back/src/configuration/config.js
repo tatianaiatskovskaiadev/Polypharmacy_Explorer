@@ -11,6 +11,7 @@ const required = (name) => {
 const config = {
     port: process.env[ENV_VARS.port] || DEFAULT_PORT,
     corsOrigins: (process.env[ENV_VARS.corsOrigin] || DEFAULT_CORS_ORIGIN).split(',').map(o => o.trim()),
+    demoApiKey: process.env[ENV_VARS.demoApiKey],
     mongodb: {
         uri: process.env[ENV_VARS.mongoUri],
         db: {

@@ -3,7 +3,16 @@ import type {CheckInteractionsRequest, Drug, Interaction, SymptomSearchRequest} 
 
 export const drugApi = createApi({
     reducerPath: 'drugApi',
-    baseQuery: fetchBaseQuery({baseUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}),
+    baseQuery: fetchBaseQuery({
+        baseUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:3000',
+        prepareHeaders: (headers) => {
+            const demoApiKey = import.meta.env.VITE_DEMO_API_KEY;
+            if (demoApiKey) {
+                headers.set('x-demo-api-key', demoApiKey);
+            }
+            return headers;
+        }
+    }),
     endpoints: builder => ({
         getDrugs: builder.query<Drug[], string>({
             query: (text) => ({

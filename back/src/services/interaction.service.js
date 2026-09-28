@@ -4,6 +4,8 @@ import * as interactionRepository from "../repository/interaction.repository.js"
 import * as drugRepository from "../repository/drug.repository.js";
 import {COLOR_BY_RISK, INTERACTION_SYNC_CONCURRENCY} from "../utils/constants.js";
 
+const inFlightInteractionSyncs = new Map();
+
 const runWithConcurrency = async (items, limit, task) => {
     const workers = Array.from(
         {length: Math.min(limit, items.length)},
@@ -38,13 +40,12 @@ export const checkInteraction = async (drugIds) => {
     return await interactionRepository.checkInteraction(drugIds);
 }
 
-export const syncInteraction = async (drugIdA, drugIdB, drugNameA, drugNameB) => {
+const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB) => {
     const existingInteraction = await interactionRepository.getInteractionPair(drugIdA, drugIdB);
     if (existingInteraction) {
         return existingInteraction;
     }
 
-    console.log(`Interaction ${drugNameA} + ${drugNameB} not cached, analyzing via FDA/AI`);
     const rawText = await fetchRawInteraction(drugNameA, drugNameB);
     if (!rawText) return null;
 
@@ -58,5 +59,23 @@ export const syncInteraction = async (drugIdA, drugIdB, drugNameA, drugNameB) =>
         description,
         actionRequired
     });
+}
+
+export const syncInteraction = async (drugIdA, drugIdB, drugNameA, drugNameB) => {
+    const interactionKey = interactionRepository.toCanonicalPair(drugIdA, drugIdB).join(':');
+    const inFlightSync = inFlightInteractionSyncs.get(interactionKey);
+    if (inFlightSync) {
+        return await inFlightSync;
+    }
+
+    const syncPromise = syncInteractionWithoutLock(drugIdA, drugIdB, drugNameA, drugNameB)
+        .finally(() => {
+            if (inFlightInteractionSyncs.get(interactionKey) === syncPromise) {
+                inFlightInteractionSyncs.delete(interactionKey);
+            }
+        });
+
+    inFlightInteractionSyncs.set(interactionKey, syncPromise);
+    return await syncPromise;
 }
 
