@@ -13,7 +13,13 @@ export const parseDrugRegistry = async (filePath) => {
     const parser = fs.createReadStream(filePath).pipe(csv());
 
     for await (const row of parser) {
-        currentBatch.push(row);
+
+        const mappedRow = {
+            name: row['drugname'],
+            activeIngredient: row['activeingred'],
+        }
+
+        currentBatch.push(mappedRow);
         totalRows++;
 
         if (currentBatch.length === BATCH_SIZE) {

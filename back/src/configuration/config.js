@@ -10,11 +10,16 @@ const config = {
     port: process.env.PORT || 3000,
     corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim()),
     mongodb: {
-        uri: required('MONGO_URI'),
+        uri: process.env.MONGO_URI,
         db: {
-            dbName: required('DB_NAME')
+            dbName: process.env.DB_NAME
         }
     }
+}
+
+export const validateRuntimeConfig = () => {
+    required('MONGO_URI');
+    required('DB_NAME');
 }
 
 export default config;

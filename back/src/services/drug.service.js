@@ -2,65 +2,198 @@ import * as drugRepository from '../repository/drug.repository.js';
 import {createVector} from './ai.service.js';
 import {fetchAnaloguesFromFDA} from './fda.service.js';
 
+const buildEmbeddingText = (item) => {
+    const sections = [
+        item.boxed_warning?.[0],
+        item.warnings?.[0],
+        item.warnings_and_cautions?.[0],
+        item.adverse_reactions?.[0],
+        item.contraindications?.[0],
+        item.drug_interactions?.[0],
+        item.indications_and_usage?.[0]
+    ].filter(Boolean);
+
+    return sections.join('\n\n');
+};
+
 export const createDrug = async (drug) => {
-    const {name, activeIngredient, originalText} = drug;
-    const embedding = await createVector(originalText);
+    const {
+        name,
+        activeIngredient,
+        originalText
+    } = drug;
+
+    const embedding = originalText
+        ? await createVector(originalText)
+        : [];
+
     const data = {
         name,
         activeIngredient,
         guidelines: {
+            source: 'FDA',
             originalText,
             embedding
         }
-    }
+    };
+
     return await drugRepository.createDrug(data);
-}
+};
 
 export const getSimilarDrugs = async (text) => {
-    const localDrugs = await drugRepository.getDrugByName(text);
 
-    const searchIngredient = localDrugs.length > 0 ? localDrugs[0].activeIngredient : text;
+    const localDrugs =
+        await drugRepository.getDrugByName(text);
 
-    const fdaAnalogues = await fetchAnaloguesFromFDA(searchIngredient);
+    const searchIngredient =
+        localDrugs.length > 0
+            ? localDrugs[0].activeIngredient
+            : text;
+
+    const fdaAnalogues =
+        await fetchAnaloguesFromFDA(searchIngredient);
+
     const savedDrugs = [];
 
+
     for (const item of fdaAnalogues) {
-        const name = item.openfda?.brand_name?.[0];
-        const itemIngredient = item.openfda?.generic_name?.[0] || searchIngredient;
-        const originalText = item.warnings?.[0] || item.description?.[0] || 'No information available.';
 
-        if (!name) continue;
+        const name =
+            item.openfda?.brand_name?.[0];
 
-        const existing = await drugRepository.getDrugByName(name);
-        if (existing.length > 0) {
-            const drugFromDb = existing[0];
+        const itemIngredient =
+            item.openfda?.generic_name?.[0] ||
+            searchIngredient;
 
-            const isAlreadyInList = savedDrugs.some(d => d._id.toString() === drugFromDb._id.toString());
-            if (!isAlreadyInList) {
-                savedDrugs.push(drugFromDb);
-            }
+        if (!name) {
             continue;
         }
 
-        console.log(`Vectorizing and saving new analogue: ${name}`);
 
-        const embedding = await createVector(originalText);
+        const embeddingText =
+            buildEmbeddingText(item);
 
-        const savedDrug = await drugRepository.createDrug({
-            name,
-            activeIngredient: itemIngredient,
-            guidelines: {
-                originalText,
-                embedding
+        if (!embeddingText) {
+            continue;
+        }
+
+
+        const existing =
+            await drugRepository.getDrugByName(name);
+
+
+        if (existing.length > 0) {
+
+            let drugFromDb = existing[0];
+
+            const embedding =
+                await createVector(embeddingText);
+
+
+            drugFromDb =
+                await drugRepository.updateDrug(
+                    drugFromDb._id,
+                    {
+                        activeIngredient:
+                            itemIngredient ||
+                            drugFromDb.activeIngredient,
+
+                        guidelines: {
+                            source: 'FDA',
+
+                            originalText:
+                            embeddingText,
+
+                            embedding
+                        }
+                    }
+                );
+
+
+            if (!drugFromDb) {
+                throw new Error(
+                    `Drug not found after update: ${name}`
+                );
             }
-        });
+
+
+            const isAlreadyInList =
+                savedDrugs.some(
+                    drug =>
+                        drug._id.toString() ===
+                        drugFromDb._id.toString()
+                );
+
+
+            if (!isAlreadyInList) {
+                savedDrugs.push(drugFromDb);
+            }
+
+
+            continue;
+        }
+
+
+        const embedding =
+            await createVector(embeddingText);
+
+
+        const savedDrug =
+            await drugRepository.createDrug({
+                name,
+
+                activeIngredient:
+                itemIngredient,
+
+                guidelines: {
+                    source: 'FDA',
+
+                    originalText:
+                    embeddingText,
+
+                    embedding
+                }
+            });
+
+
         savedDrugs.push(savedDrug);
     }
 
-    return savedDrugs;
-}
 
-export const searchDrugsBySymptom = async (symptom, drugIds) => {
-    const vectorSymptom = await createVector(symptom);
-    return await drugRepository.getDrug(vectorSymptom, drugIds);
-}
+    return savedDrugs;
+};
+
+export const searchDrugsBySymptom = async (
+    symptom,
+    drugIds
+) => {
+
+    if (!symptom?.trim()) {
+        return [];
+    }
+
+
+    if (
+        !Array.isArray(drugIds) ||
+        drugIds.length === 0
+    ) {
+        return [];
+    }
+
+
+    const vectorSymptom =
+        await createVector(symptom.trim());
+
+    if (
+        !Array.isArray(vectorSymptom) ||
+        vectorSymptom.length === 0
+    ) {
+        return [];
+    }
+
+
+    return await drugRepository.getDrug(
+        vectorSymptom,
+        drugIds
+    );
+};
