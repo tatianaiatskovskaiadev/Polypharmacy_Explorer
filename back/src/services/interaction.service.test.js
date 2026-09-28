@@ -1,4 +1,5 @@
 import {beforeEach, describe, expect, jest, test} from '@jest/globals';
+import {ExternalServiceError} from '../utils/errors.js';
 
 const getDrugsByIds = jest.fn();
 const checkInteractionRepository = jest.fn();
@@ -129,5 +130,23 @@ describe('interaction service', () => {
         expect(getInteractionPair).toHaveBeenCalledTimes(1);
         expect(normalizeInteractionText).toHaveBeenCalledTimes(1);
         expect(upsertInteraction).toHaveBeenCalledTimes(1);
+    });
+
+    test('continues interaction check when one external pair sync is rate limited', async () => {
+        const drugs = [
+            {_id: 'drug-a', name: 'A'},
+            {_id: 'drug-b', name: 'B'}
+        ];
+        const cachedInteractions = [
+            {_id: 'cached-interaction', drugA: 'drug-a', drugB: 'drug-b'}
+        ];
+
+        getDrugsByIds.mockResolvedValueOnce(drugs);
+        getInteractionPair.mockResolvedValue(null);
+        fetchRawInteraction.mockRejectedValueOnce(new ExternalServiceError('openFDA responded with 500 Internal Server Error'));
+        checkInteractionRepository.mockResolvedValue(cachedInteractions);
+
+        await expect(checkInteraction(['drug-a', 'drug-b'])).resolves.toEqual(cachedInteractions);
+        expect(checkInteractionRepository).toHaveBeenCalledWith(['drug-a', 'drug-b']);
     });
 });

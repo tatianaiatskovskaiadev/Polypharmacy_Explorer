@@ -1,23 +1,59 @@
 import {ExternalServiceError} from "../utils/errors.js";
-import {FDA_LABEL_URL, FDA_REQUEST_TIMEOUT_MS} from "../utils/constants.js";
+import {
+    FDA_LABEL_URL,
+    FDA_MAX_RETRIES,
+    FDA_REQUEST_TIMEOUT_MS,
+    FDA_RETRY_BACKOFF_MS
+} from "../utils/constants.js";
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRateLimitResponse = (response, body) => (
+    response.status === 429 ||
+    body.toLowerCase().includes('too many requests')
+);
+
+const fetchWithRetry = async (url) => {
+    for (let attempt = 0; attempt <= FDA_MAX_RETRIES; attempt++) {
+        let response;
+        try {
+            response = await fetch(url, {signal: AbortSignal.timeout(FDA_REQUEST_TIMEOUT_MS)});
+        } catch (error) {
+            if (attempt < FDA_MAX_RETRIES) {
+                await delay(FDA_RETRY_BACKOFF_MS * (attempt + 1));
+                continue;
+            }
+
+            throw new ExternalServiceError(`openFDA request failed: ${error.message}`);
+        }
+
+        if (response.status === 404) {
+            return [];
+        }
+
+        if (response.ok) {
+            const data = await response.json();
+            return data.results ?? [];
+        }
+
+        const body = await response.text();
+        if (isRateLimitResponse(response, body) && attempt < FDA_MAX_RETRIES) {
+            await delay(FDA_RETRY_BACKOFF_MS * (attempt + 1));
+            continue;
+        }
+
+        throw new ExternalServiceError(
+            `openFDA responded with ${response.status} ${response.statusText}`
+        );
+    }
+
+    throw new ExternalServiceError('openFDA request failed');
+};
 
 const fetchLabels = async (search, limit) => {
     const url = `${FDA_LABEL_URL}?search=${encodeURIComponent(search)}&limit=${limit}`;
 
-    const response = await fetch(url, {signal: AbortSignal.timeout(FDA_REQUEST_TIMEOUT_MS)});
-    // openFDA responds 404 when nothing matches the query
-    if (response.status === 404) return [];
-    if (!response.ok) {
-        const body = await response.text();
-
-        console.error('openFDA error:', body);
-
-        throw new ExternalServiceError(
-            `openFDA responded with ${response.status} ${response.statusText}: ${body}`
-        );
-    }
-    const data = await response.json();
-    return data.results ?? [];
+    return await fetchWithRetry(url);
 }
 
 const quote = (value) => `"${value.replaceAll('"', '')}"`;

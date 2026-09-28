@@ -3,6 +3,7 @@ import {normalizeInteractionText} from "./ai.service.js";
 import * as interactionRepository from "../repository/interaction.repository.js";
 import * as drugRepository from "../repository/drug.repository.js";
 import {COLOR_BY_RISK, INTERACTION_SYNC_CONCURRENCY} from "../utils/constants.js";
+import {ExternalServiceError} from "../utils/errors.js";
 
 const inFlightInteractionSyncs = new Map();
 
@@ -34,7 +35,13 @@ export const checkInteraction = async (drugIds) => {
     await runWithConcurrency(pairs, INTERACTION_SYNC_CONCURRENCY, async ([drugA, drugB]) => {
         const searchNameA = drugA.activeIngredient || drugA.name;
         const searchNameB = drugB.activeIngredient || drugB.name;
-        await syncInteraction(drugA._id, drugB._id, searchNameA, searchNameB);
+        try {
+            await syncInteraction(drugA._id, drugB._id, searchNameA, searchNameB);
+        } catch (error) {
+            if (!(error instanceof ExternalServiceError)) {
+                throw error;
+            }
+        }
     });
 
     return await interactionRepository.checkInteraction(drugIds);
