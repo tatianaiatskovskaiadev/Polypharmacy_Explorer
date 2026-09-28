@@ -9,6 +9,7 @@ const drugSchema = new Schema({
     guidelines: {
         source: { type: String, default: 'FDA' },
         originalText: {type: String},
+        contentHash: {type: String},
         embedding: {
             type: [Number]
         }

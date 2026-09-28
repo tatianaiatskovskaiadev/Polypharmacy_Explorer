@@ -1,4 +1,5 @@
 import * as drugRepository from '../repository/drug.repository.js';
+import {createHash} from 'crypto';
 import {createVector} from './ai.service.js';
 import {fetchAnaloguesFromFDA} from './fda.service.js';
 import {MAX_EMBEDDING_TEXT_LENGTH, MAX_FDA_SECTION_LENGTH} from '../utils/constants.js';
@@ -26,8 +27,15 @@ const buildEmbeddingText = (item) => {
     return limitText(sections.join('\n\n'), MAX_EMBEDDING_TEXT_LENGTH);
 };
 
-const hasReusableGuidelines = (drug) => (
+const createContentHash = (text) => (
+    createHash('sha256')
+        .update(text)
+        .digest('hex')
+);
+
+const hasReusableGuidelines = (drug, embeddingText) => (
     Boolean(drug.guidelines?.originalText) &&
+    drug.guidelines?.contentHash === createContentHash(embeddingText) &&
     Array.isArray(drug.guidelines?.embedding) &&
     drug.guidelines.embedding.length > 0
 );
@@ -49,6 +57,9 @@ export const createDrug = async (drug) => {
         guidelines: {
             source: 'FDA',
             originalText,
+            contentHash: originalText
+                ? createContentHash(originalText)
+                : undefined,
             embedding
         }
     };
@@ -106,7 +117,7 @@ export const getSimilarDrugs = async (text) => {
 
             let drugFromDb = existing[0];
 
-            if (hasReusableGuidelines(drugFromDb)) {
+            if (hasReusableGuidelines(drugFromDb, embeddingText)) {
                 const isAlreadyInList =
                     savedDrugs.some(
                         drug =>
@@ -140,6 +151,9 @@ export const getSimilarDrugs = async (text) => {
 
                             originalText:
                             embeddingText,
+
+                            contentHash:
+                            createContentHash(embeddingText),
 
                             embedding
                         }
@@ -187,6 +201,9 @@ export const getSimilarDrugs = async (text) => {
 
                     originalText:
                     embeddingText,
+
+                    contentHash:
+                    createContentHash(embeddingText),
 
                     embedding
                 }

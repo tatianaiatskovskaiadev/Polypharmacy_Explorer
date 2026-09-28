@@ -1,4 +1,5 @@
 import {beforeEach, describe, expect, jest, test} from '@jest/globals';
+import {createHash} from 'crypto';
 
 const createVector = jest.fn();
 const fetchAnaloguesFromFDA = jest.fn();
@@ -21,6 +22,8 @@ jest.unstable_mockModule('../repository/drug.repository.js', () => ({
 }));
 
 const {getSimilarDrugs} = await import('./drug.service.js');
+
+const contentHash = (text) => createHash('sha256').update(text).digest('hex');
 
 describe('drug service', () => {
     beforeEach(() => {
@@ -68,6 +71,7 @@ describe('drug service', () => {
             guidelines: expect.objectContaining({
                 source: 'FDA',
                 originalText: 'FDA description text',
+                contentHash: contentHash('FDA description text'),
                 embedding: [0.1, 0.2, 0.3]
             })
         }));
@@ -96,13 +100,15 @@ describe('drug service', () => {
         expect(createVector.mock.calls[0][0].length).toBeLessThanOrEqual(6_000);
     });
 
-    test('reuses cached FDA guidelines and embedding for existing drugs', async () => {
+    test('reuses cached FDA guidelines and embedding when content hash matches', async () => {
+        const currentText = 'fresh FDA warning text';
         const cachedDrug = {
             _id: 'drug-1',
             name: 'Ibuprofen',
             activeIngredient: 'ibuprofen',
             guidelines: {
-                originalText: 'cached FDA text',
+                originalText: currentText,
+                contentHash: contentHash(currentText),
                 embedding: [0.1, 0.2]
             }
         };
@@ -116,7 +122,7 @@ describe('drug service', () => {
                     brand_name: ['Ibuprofen'],
                     generic_name: ['ibuprofen']
                 },
-                warnings: ['fresh FDA warning text']
+                warnings: [currentText]
             }
         ]);
 
@@ -125,7 +131,7 @@ describe('drug service', () => {
         expect(updateDrug).not.toHaveBeenCalled();
     });
 
-    test('refreshes existing drug only when cached embedding is missing', async () => {
+    test('refreshes existing drug when cached embedding is missing', async () => {
         const staleDrug = {
             _id: 'drug-1',
             name: 'Ibuprofen',
@@ -153,6 +159,7 @@ describe('drug service', () => {
             ...staleDrug,
             guidelines: {
                 originalText: 'fresh FDA warning text',
+                contentHash: contentHash('fresh FDA warning text'),
                 embedding: [0.3, 0.4]
             }
         });
@@ -161,5 +168,51 @@ describe('drug service', () => {
 
         expect(createVector).toHaveBeenCalledTimes(1);
         expect(updateDrug).toHaveBeenCalledTimes(1);
+    });
+
+    test('refreshes existing drug when FDA guideline hash changed', async () => {
+        const changedDrug = {
+            _id: 'drug-1',
+            name: 'Ibuprofen',
+            activeIngredient: 'ibuprofen',
+            guidelines: {
+                originalText: 'old FDA text',
+                contentHash: contentHash('old FDA text'),
+                embedding: [0.1, 0.2]
+            }
+        };
+
+        getDrugByName
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([changedDrug]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([
+            {
+                openfda: {
+                    brand_name: ['Ibuprofen'],
+                    generic_name: ['ibuprofen']
+                },
+                warnings: ['new FDA text']
+            }
+        ]);
+        createVector.mockResolvedValueOnce([0.3, 0.4]);
+        updateDrug.mockResolvedValueOnce({
+            ...changedDrug,
+            guidelines: {
+                originalText: 'new FDA text',
+                contentHash: contentHash('new FDA text'),
+                embedding: [0.3, 0.4]
+            }
+        });
+
+        await getSimilarDrugs('ibuprofen');
+
+        expect(createVector).toHaveBeenCalledWith('new FDA text');
+        expect(updateDrug).toHaveBeenCalledWith('drug-1', expect.objectContaining({
+            guidelines: expect.objectContaining({
+                originalText: 'new FDA text',
+                contentHash: contentHash('new FDA text'),
+                embedding: [0.3, 0.4]
+            })
+        }));
     });
 });
