@@ -12,8 +12,14 @@ type ApiError = {
     status?: number | string;
 };
 
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+
 const getApiErrorMessage = (error: unknown, fallback: string) => {
     const status = (error as ApiError | undefined)?.status;
+
+    if (status === 'FETCH_ERROR') {
+        return `Backend is unreachable at ${API_BASE_URL}. Start the backend or check VITE_API_URL.`;
+    }
 
     if (status === 401) {
         return 'Demo API key is missing or invalid. Check VITE_DEMO_API_KEY.';
@@ -134,7 +140,7 @@ const SearchPanel = () => {
                             onClick={() => handleRemoveDrug(drug._id)}
                             type="button"
                         >
-                            {drug.name} ×
+                            {drug.name} x
                         </button>
                     ))}
                 </div>
