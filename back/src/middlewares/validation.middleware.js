@@ -1,6 +1,13 @@
 import Joi from 'joi';
+import {RISK_LEVELS} from "../utils/constants.js";
 
 const objectId = Joi.string().hex().length(24);
+
+const interactionResultSchema = Joi.object({
+    riskLevel: Joi.string().valid(...RISK_LEVELS).required(),
+    description: Joi.string().trim().min(1).required(),
+    actionRequired: Joi.string().trim().allow('').required()
+});
 
 const schemas = {
     searchDrugs: Joi.object({
@@ -43,5 +50,9 @@ const validate = (schemaName, target = 'body') => (req, res, next) => {
     }
     return next();
 }
+
+export const validateInteractionResult = (interactionResult) => (
+    interactionResultSchema.validate(interactionResult, {stripUnknown: true})
+);
 
 export default validate;

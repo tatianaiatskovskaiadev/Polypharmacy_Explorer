@@ -1,3 +1,5 @@
+import {DEFAULT_CORS_ORIGIN, DEFAULT_PORT, ENV_VARS} from "../utils/constants.js";
+
 const required = (name) => {
     const value = process.env[name];
     if (!value) {
@@ -7,19 +9,19 @@ const required = (name) => {
 }
 
 const config = {
-    port: process.env.PORT || 3000,
-    corsOrigins: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(o => o.trim()),
+    port: process.env[ENV_VARS.port] || DEFAULT_PORT,
+    corsOrigins: (process.env[ENV_VARS.corsOrigin] || DEFAULT_CORS_ORIGIN).split(',').map(o => o.trim()),
     mongodb: {
-        uri: process.env.MONGO_URI,
+        uri: process.env[ENV_VARS.mongoUri],
         db: {
-            dbName: process.env.DB_NAME
+            dbName: process.env[ENV_VARS.dbName]
         }
     }
 }
 
 export const validateRuntimeConfig = () => {
-    required('MONGO_URI');
-    required('DB_NAME');
+    required(ENV_VARS.mongoUri);
+    required(ENV_VARS.dbName);
 }
 
 export default config;

@@ -1,18 +1,15 @@
 import OpenAI from "openai";
-import Joi from "joi";
 import {ExternalServiceError} from "../utils/errors.js";
+import {validateInteractionResult} from "../middlewares/validation.middleware.js";
+import {
+    MAX_EMBEDDING_INPUT_LENGTH,
+    OPENAI_CHAT_MODEL,
+    OPENAI_EMBEDDING_ENCODING_FORMAT,
+    OPENAI_EMBEDDING_MODEL,
+    OPENAI_JSON_RESPONSE_FORMAT
+} from "../utils/constants.js";
 
 const openai = new OpenAI();
-const MAX_EMBEDDING_INPUT_LENGTH = 8_000;
-
-export const RISK_LEVELS = ['minor', 'moderate', 'major', 'critical'];
-
-// The LLM response is untrusted input: validate it before it reaches the database
-const interactionResultSchema = Joi.object({
-    riskLevel: Joi.string().valid(...RISK_LEVELS).required(),
-    description: Joi.string().trim().min(1).required(),
-    actionRequired: Joi.string().trim().allow('').required()
-});
 
 export const createVector = async (originalText) => {
     const input = originalText.length > MAX_EMBEDDING_INPUT_LENGTH
@@ -20,9 +17,9 @@ export const createVector = async (originalText) => {
         : originalText;
 
     const embedding = await openai.embeddings.create({
-        model: "text-embedding-3-small",
+        model: OPENAI_EMBEDDING_MODEL,
         input,
-        encoding_format: "float",
+        encoding_format: OPENAI_EMBEDDING_ENCODING_FORMAT,
     })
     return embedding.data[0].embedding
 }
@@ -58,7 +55,7 @@ export const normalizeInteractionText = async (rawText) => {
         `;
 
     const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: OPENAI_CHAT_MODEL,
         messages: [
             {
                 role: "system",
@@ -70,7 +67,7 @@ export const normalizeInteractionText = async (rawText) => {
             },
         ],
         response_format: {
-            type: "json_object",
+            type: OPENAI_JSON_RESPONSE_FORMAT,
         },
         temperature: 0,
     });
@@ -82,7 +79,7 @@ export const normalizeInteractionText = async (rawText) => {
         throw new ExternalServiceError('LLM returned malformed JSON');
     }
 
-    const {value, error} = interactionResultSchema.validate(parsed, {stripUnknown: true});
+    const {value, error} = validateInteractionResult(parsed);
     if (error) {
         throw new ExternalServiceError(`LLM returned an invalid interaction result: ${error.message}`);
     }

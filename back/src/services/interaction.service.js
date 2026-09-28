@@ -2,13 +2,7 @@ import {fetchRawInteraction} from "./fda.service.js";
 import {normalizeInteractionText} from "./ai.service.js";
 import * as interactionRepository from "../repository/interaction.repository.js";
 import * as drugRepository from "../repository/drug.repository.js";
-
-const COLOR_BY_RISK = {
-    minor: 'green',
-    moderate: 'yellow',
-    major: 'orange',
-    critical: 'red'
-};
+import {COLOR_BY_RISK} from "../utils/constants.js";
 
 export const checkInteraction = async (drugIds) => {
     if (drugIds.length < 2) return [];

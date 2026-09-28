@@ -1,9 +1,7 @@
 import * as drugRepository from '../repository/drug.repository.js';
 import {createVector} from './ai.service.js';
 import {fetchAnaloguesFromFDA} from './fda.service.js';
-
-const MAX_EMBEDDING_TEXT_LENGTH = 6_000;
-const MAX_SECTION_LENGTH = 1_500;
+import {MAX_EMBEDDING_TEXT_LENGTH, MAX_FDA_SECTION_LENGTH} from '../utils/constants.js';
 
 const limitText = (text, maxLength) => (
     text.length > maxLength
@@ -23,7 +21,7 @@ const buildEmbeddingText = (item) => {
         item.description?.[0]
     ]
         .filter(Boolean)
-        .map(section => limitText(section, MAX_SECTION_LENGTH));
+        .map(section => limitText(section, MAX_FDA_SECTION_LENGTH));
 
     return limitText(sections.join('\n\n'), MAX_EMBEDDING_TEXT_LENGTH);
 };

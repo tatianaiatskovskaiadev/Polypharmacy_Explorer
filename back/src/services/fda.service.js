@@ -1,12 +1,10 @@
 import {ExternalServiceError} from "../utils/errors.js";
-
-const FDA_LABEL_URL = 'https://api.fda.gov/drug/label.json';
-const REQUEST_TIMEOUT_MS = 10_000;
+import {FDA_LABEL_URL, FDA_REQUEST_TIMEOUT_MS} from "../utils/constants.js";
 
 const fetchLabels = async (search, limit) => {
     const url = `${FDA_LABEL_URL}?search=${encodeURIComponent(search)}&limit=${limit}`;
 
-    const response = await fetch(url, {signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)});
+    const response = await fetch(url, {signal: AbortSignal.timeout(FDA_REQUEST_TIMEOUT_MS)});
     // openFDA responds 404 when nothing matches the query
     if (response.status === 404) return [];
     if (!response.ok) {

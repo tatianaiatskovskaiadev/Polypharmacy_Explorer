@@ -1,8 +1,7 @@
 import fs from 'fs';
 import csv from "csv-parser";
 import {Drug} from "../models/Drug.model.js";
-
-const BATCH_SIZE = 2000;
+import {ETL_BATCH_SIZE} from "../utils/constants.js";
 
 // Streams the CSV so memory usage stays constant regardless of file size.
 // Errors are propagated to the caller so a failed import is never reported as success.
@@ -22,7 +21,7 @@ export const parseDrugRegistry = async (filePath) => {
         currentBatch.push(mappedRow);
         totalRows++;
 
-        if (currentBatch.length === BATCH_SIZE) {
+        if (currentBatch.length === ETL_BATCH_SIZE) {
             await Drug.insertMany(currentBatch, { ordered: false });
             console.log(`[DB] Rows saved: ${totalRows}`);
             currentBatch = [];

@@ -1,9 +1,11 @@
 import {Drug} from "../models/Drug.model.js"
 import mongoose from "mongoose";
-
-const SIMILARITY_THRESHOLD = 0.6;
-// Atlas recommends numCandidates to be 10-20x the limit for good recall
-const CANDIDATES_MULTIPLIER = 20;
+import {
+    DRUG_EMBEDDING_PATH,
+    VECTOR_CANDIDATES_MULTIPLIER,
+    VECTOR_SEARCH_INDEX,
+    VECTOR_SIMILARITY_THRESHOLD
+} from "../utils/constants.js";
 
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -16,15 +18,15 @@ export const getDrug = async (vectorSymptom, drugIds) => {
         id => new mongoose.Types.ObjectId(id)
     );
     const numCandidates = Math.max(
-        drugIds.length * CANDIDATES_MULTIPLIER,
+        drugIds.length * VECTOR_CANDIDATES_MULTIPLIER,
         drugIds.length
     );
 
     const pipeline = [
         {
             $vectorSearch: {
-                index: "vector_index",
-                path: "guidelines.embedding",
+                index: VECTOR_SEARCH_INDEX,
+                path: DRUG_EMBEDDING_PATH,
                 queryVector: vectorSymptom,
                 filter: {
                     _id: {$in: ids}
@@ -44,7 +46,7 @@ export const getDrug = async (vectorSymptom, drugIds) => {
         {
             $match: {
                 score: {
-                    $gte: SIMILARITY_THRESHOLD
+                    $gte: VECTOR_SIMILARITY_THRESHOLD
                 }
             }
         },
@@ -73,4 +75,3 @@ export const updateDrug = async (id, data) => {
         }
     );
 };
-
