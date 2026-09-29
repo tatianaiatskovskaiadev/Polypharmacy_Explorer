@@ -1,11 +1,13 @@
 import {describe, expect, test} from '@jest/globals';
 import request from 'supertest';
 import app from './app.js';
+import {DEMO_API_KEY_HEADER} from './utils/constants.js';
 
 describe('app', () => {
     test('rejects invalid search payload with normalized validation error', async () => {
         const response = await request(app)
             .post('/search')
+            .set(DEMO_API_KEY_HEADER, process.env.DEMO_API_KEY ?? '')
             .send({text: ''});
 
         expect(response.status).toBe(400);
