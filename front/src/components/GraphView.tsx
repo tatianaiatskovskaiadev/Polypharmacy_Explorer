@@ -1,19 +1,15 @@
-import {useCallback, useState, useEffect} from "react";
+import {useMemo, useState} from "react";
 import {
-    applyEdgeChanges,
-    applyNodeChanges,
     ReactFlow,
     type Node,
     type Edge,
-    type NodeChange,
-    type EdgeChange
 } from "@xyflow/react";
 import type {Drug, Interaction} from "../utils/types";
 import ModalWindow from "./ModalWindow.tsx";
 import {useAppDispatch, useAppSelector} from "../app/hooks.ts";
 import * as React from "react";
-import dagre from "dagre";
 import {open, close} from "../features/window/windowSlice.ts";
+import {getLayoutedElements, NODE_HEIGHT, NODE_WIDTH} from "../utils/graphLayout.ts";
 
 type Props = {
     data: Drug[];
@@ -21,66 +17,16 @@ type Props = {
     highlightedDrugs?: Drug[];
 }
 
-const NODE_WIDTH = 150;
-const NODE_HEIGHT = 50;
-
-export const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
-
-    const graph = new dagre.graphlib.Graph();
-    graph.setDefaultEdgeLabel(() => ({}));
-
-    graph.setGraph({
-        rankdir: "TB",
-        nodesep: 50,
-        edgesep: 20,
-        ranksep: 50,
-        marginx: 20,
-        marginy: 20,
-    });
-
-    nodes.forEach((node) => {
-        graph.setNode(node.id, {
-            width: NODE_WIDTH,
-            height: NODE_HEIGHT,
-        });
-    });
-
-    edges.forEach((edge) => {
-        graph.setEdge(edge.source, edge.target);
-    });
-
-    dagre.layout(graph);
-
-    const layoutedNodes = nodes.map((node) => {
-        const nodeWithPosition = graph.node(node.id);
-
-        return {
-            ...node,
-            position: {
-                x: nodeWithPosition.x - NODE_WIDTH / 2,
-                y: nodeWithPosition.y - NODE_HEIGHT / 2,
-            },
-        };
-    });
-
-    return {nodes: layoutedNodes, edges};
-}
-
 // Stable references: inline `= []` defaults would change on every render and retrigger the layout effect
 const NO_INTERACTIONS: Interaction[] = [];
 const NO_DRUGS: Drug[] = [];
 
 const GraphView = ({data, interactions = NO_INTERACTIONS, highlightedDrugs = NO_DRUGS} : Props) => {
-    const [nodes, setNodes] = useState<Node[]>([]);
-    const [edges, setEdges] = useState<Edge[]>([]);
     const [selectedInteraction, setSelectedInteraction] = useState<Interaction | null>(null);
     const modalConfig = useAppSelector((state) => state.window);
     const dispatch = useAppDispatch();
 
-    const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)), []);
-    const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((edgesSnapshot) => applyEdgeChanges(changes, edgesSnapshot)), []);
-
-    useEffect(() => {
+    const {nodes, edges} = useMemo(() => {
         const newNodes: Node[] = data.map((drug) => ({
             id: drug._id,
             data: {label: drug.name},
@@ -116,13 +62,7 @@ const GraphView = ({data, interactions = NO_INTERACTIONS, highlightedDrugs = NO_
             })
         );
 
-        const {
-            nodes: layoutedNodes,
-            edges: layoutedEdges,
-        } = getLayoutedElements(newNodes, newEdges);
-
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
+        return getLayoutedElements(newNodes, newEdges);
     }, [data, interactions, highlightedDrugs]);
 
     const handleEdgeClick = (
@@ -160,8 +100,7 @@ const GraphView = ({data, interactions = NO_INTERACTIONS, highlightedDrugs = NO_
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
+                nodesDraggable={false}
                 nodesConnectable={false}
                 fitView
                 onEdgeClick={handleEdgeClick}
