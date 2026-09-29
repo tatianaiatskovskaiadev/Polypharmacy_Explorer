@@ -152,6 +152,11 @@ const GraphView = ({data, interactions = NO_INTERACTIONS, highlightedDrugs = NO_
                 height: "100vh",
             }}
         >
+            {data.length > 1 ? (
+                <div className="absolute z-10 m-3 max-w-md rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900 shadow-sm">
+                    Missing lines mean no interaction data was found or returned for that pair. They do not prove the combination is safe.
+                </div>
+            ) : null}
             <ReactFlow
                 nodes={nodes}
                 edges={edges}

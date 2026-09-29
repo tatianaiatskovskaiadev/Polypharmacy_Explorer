@@ -2,6 +2,7 @@ import fs from 'fs';
 import csv from "csv-parser";
 import {Drug} from "../models/Drug.model.js";
 import {ETL_BATCH_SIZE} from "../utils/constants.js";
+import {normalizeDrugName} from "../utils/normalization.js";
 
 // Streams the CSV so memory usage stays constant regardless of file size.
 // Errors are propagated to the caller so a failed import is never reported as success.
@@ -15,6 +16,7 @@ export const parseDrugRegistry = async (filePath) => {
 
         const mappedRow = {
             name: row['drugname'],
+            normalizedName: normalizeDrugName(row['drugname']),
             activeIngredient: row['activeingred'],
         }
 

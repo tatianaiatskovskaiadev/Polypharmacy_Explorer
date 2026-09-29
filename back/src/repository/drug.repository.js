@@ -1,5 +1,6 @@
 import {Drug} from "../models/Drug.model.js"
 import mongoose from "mongoose";
+import {normalizeDrugName} from "../utils/normalization.js";
 import {
     DRUG_EMBEDDING_PATH,
     VECTOR_CANDIDATES_MULTIPLIER,
@@ -9,7 +10,10 @@ import {
 
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-export const createDrug = async (drug) => await Drug.create(drug);
+export const createDrug = async (drug) => await Drug.create({
+    ...drug,
+    normalizedName: normalizeDrugName(drug.name)
+});
 
 export const getDrugsByIds = async (drugIds) => await Drug.find({ _id: { $in: drugIds } });
 
@@ -62,13 +66,26 @@ export const getDrug = async (vectorSymptom, drugIds) => {
 };
 
 export const getDrugByName = async (name) => {
-    return await Drug.find({ name: { $regex: escapeRegex(name), $options: 'i' } });
+    const normalizedName = normalizeDrugName(name);
+    return await Drug.find({
+        $or: [
+            {normalizedName},
+            {name: {$regex: escapeRegex(name.trim()), $options: 'i'}}
+        ]
+    });
 }
 
 export const updateDrug = async (id, data) => {
+    const normalizedData = data.name
+        ? {
+            ...data,
+            normalizedName: normalizeDrugName(data.name)
+        }
+        : data;
+
     return Drug.findByIdAndUpdate(
         id,
-        {$set: data},
+        {$set: normalizedData},
         {
             returnDocument: 'after',
             runValidators: true

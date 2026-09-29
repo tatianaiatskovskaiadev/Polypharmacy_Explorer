@@ -20,6 +20,8 @@ This project turns that workflow into an interactive graph:
 
 - Drug search through local MongoDB data and openFDA label enrichment.
 - Interaction graph built with React Flow and Dagre layout.
+- Graph warning that missing edges mean unavailable/absent data, not proven safety.
+- Normalized unique drug names to reduce duplicate records from casing and whitespace differences.
 - Canonical interaction pairs, so `A + B` and `B + A` share one cached record.
 - AI normalization with strict Joi validation before storing model output.
 - Symptom/risk semantic search over FDA label embeddings.
@@ -215,14 +217,17 @@ Current backend test coverage focuses on:
 - bounded interaction sync concurrency
 - in-flight deduplication for concurrent interaction pair syncs
 - demo API key and rate-limit protection for costly endpoints
+- normalized drug name duplicate protection
 
 Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 8 suites, 25 tests |
+| `cd back && npm test` | Passed: 10 suites, 30 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed, with 2 React warnings in `GraphView.tsx` |
+
+GitHub Actions runs backend tests and frontend build/lint on pushes to `main` and on pull requests.
 
 ## Docker
 
@@ -244,6 +249,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 ## Important Design Decisions
 
 - **AI output is treated as untrusted input.** The backend validates normalized interaction data with Joi before it can be stored.
+- **Drug names are normalized before persistence.** A `normalizedName` unique index prevents duplicates caused by casing or extra whitespace.
 - **Interaction pairs are canonicalized.** The repository stores drug pairs in stable order to avoid duplicate `A+B` and `B+A` records.
 - **Interaction analysis uses bounded concurrency.** Cold-cache pair analysis is parallelized with a small concurrency limit to reduce latency without overwhelming FDA/OpenAI.
 - **Concurrent pair syncs are deduplicated in-process.** Parallel requests for the same canonical pair share one in-flight Promise, avoiding duplicate FDA/OpenAI spend in a single Node process.
@@ -256,12 +262,14 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 ## Limitations
 
 - This is not medical advice and must not be used for clinical decisions.
+- A missing graph edge means no interaction record was found or returned for that pair; it does not prove the combination is safe.
 - Backend is JavaScript while frontend is TypeScript; backend TypeScript migration is a future improvement.
 - Structured logging, request IDs, and metrics are not fully implemented yet.
 - Docker Compose and CI/CD are not included yet.
 - Frontend UX is still prototype-level and needs stronger empty, loading, error, and removal states.
 - MongoDB Atlas Vector Search index setup must be configured outside the repository.
 - In-flight interaction deduplication is per Node process; multi-instance deployments need a distributed lock or persistent pending status.
+- Existing MongoDB collections need a one-time `normalizedName` backfill and duplicate cleanup before the unique drug-name index can be built safely.
 
 ## Roadmap
 
