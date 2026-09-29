@@ -6,7 +6,8 @@
     "start": "node src/server.js",
     "dev": "node --watch --env-file=.env src/server.js",
     "etl": "node --env-file=.env src/scripts/import-registry.js",
-    "test": "node --env-file=.env --experimental-vm-modules node_modules/jest/bin/jest.js"
+    "test": "node --env-file=.env --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "backfill:normalized-names": "node --env-file=.env src/scripts/backfill-normalized-names.js"
   },
   "keywords": [],
   "author": "Tatiana Iatskovskaia",

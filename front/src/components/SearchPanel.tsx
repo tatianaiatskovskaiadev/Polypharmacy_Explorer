@@ -162,8 +162,20 @@ const SearchPanel = () => {
                 </div>
             ) : null}
             {interactionResponse?.failedPairs.length ? (
-                <div className="m-2 text-sm text-yellow-700">
-                    Some interaction checks are temporarily unavailable. Showing cached and completed results.
+                <div className="m-2 max-w-2xl rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900">
+                    <div className="font-semibold">
+                        Some interaction checks are temporarily unavailable. Showing cached and completed results.
+                    </div>
+                    <ul className="mt-2 list-disc pl-5">
+                        {interactionResponse.failedPairs.map((failedPair) => (
+                            <li key={`${failedPair.drugIdA}-${failedPair.drugIdB}`}>
+                                <span className="font-medium">
+                                    {failedPair.drugNameA} + {failedPair.drugNameB}
+                                </span>
+                                {failedPair.reason ? ` — ${failedPair.reason}` : null}
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             ) : null}
             <GraphView

@@ -153,6 +153,23 @@ The CSV importer maps:
 - `drugname` to `name`
 - `activeingred` to `activeIngredient`
 
+## Database Migrations
+
+Existing databases created before `normalizedName` was introduced must be backfilled before relying on the unique drug-name index.
+
+First run a dry run to detect duplicates:
+
+```bash
+cd back
+npm run backfill:normalized-names -- --dry-run
+```
+
+If duplicate normalized names are reported, merge or remove those records manually before continuing. Then apply the backfill and create the unique index:
+
+```bash
+npm run backfill:normalized-names
+```
+
 ## API Examples
 
 Search and enrich drugs:
@@ -180,7 +197,7 @@ Response shape:
 }
 ```
 
-`failedPairs` is populated when one pair cannot be synced from FDA/OpenAI during a partial interaction check. The API still returns cached and successfully completed interactions.
+`failedPairs` is populated when one pair cannot be synced from FDA/OpenAI during a partial interaction check. The API still returns cached and successfully completed interactions, and the UI lists failed pair names with reasons.
 
 Highlight selected drugs by symptom or risk phrase:
 
@@ -223,7 +240,7 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 10 suites, 30 tests |
+| `cd back && npm test` | Passed: 12 suites, 33 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed, with 2 React warnings in `GraphView.tsx` |
 
@@ -265,18 +282,19 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - A missing graph edge means no interaction record was found or returned for that pair; it does not prove the combination is safe.
 - Backend is JavaScript while frontend is TypeScript; backend TypeScript migration is a future improvement.
 - Structured logging, request IDs, and metrics are not fully implemented yet.
-- Docker Compose and CI/CD are not included yet.
-- Frontend UX is still prototype-level and needs stronger empty, loading, error, and removal states.
+- Docker Compose is not included yet.
+- CI exists for backend tests and frontend build/lint, but deployment/CD and Docker image build checks are not configured yet.
+- Frontend UX covers removal, loading, common API errors, and partial interaction failure details, but still needs richer empty states, per-pair progress, and more polished interaction details.
 - MongoDB Atlas Vector Search index setup must be configured outside the repository.
 - In-flight interaction deduplication is per Node process; multi-instance deployments need a distributed lock or persistent pending status.
-- Existing MongoDB collections need a one-time `normalizedName` backfill and duplicate cleanup before the unique drug-name index can be built safely.
+- Existing MongoDB collections created before `normalizedName` still require the documented one-time backfill before deployment.
 
 ## Roadmap
 
 - Add Docker Compose for MongoDB, backend, and frontend.
-- Add GitHub Actions for install, build, test, and Docker build.
+- Extend GitHub Actions with Docker build and deployment checks.
 - Add structured logging with request IDs and redaction.
 - Add API versioning under `/api/v1`.
-- Add frontend removal controls, better empty states, and long-running request feedback.
+- Improve frontend empty states, per-pair interaction progress, and result explainability.
 - Store FDA source snippets, model name, prompt version, confidence metadata, and timestamps for auditability.
 - Add Redis caching or a background queue for high-latency FDA/OpenAI workflows.
