@@ -1,8 +1,10 @@
-import {useMemo, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {
+    applyNodeChanges,
     ReactFlow,
     type Node,
     type Edge,
+    type NodeChange,
 } from "@xyflow/react";
 import type {Drug, Interaction} from "../utils/types";
 import ModalWindow from "./ModalWindow.tsx";
@@ -22,11 +24,13 @@ const NO_INTERACTIONS: Interaction[] = [];
 const NO_DRUGS: Drug[] = [];
 
 const GraphView = ({data, interactions = NO_INTERACTIONS, highlightedDrugs = NO_DRUGS} : Props) => {
+    const [nodes, setNodes] = useState<Node[]>([]);
     const [selectedInteraction, setSelectedInteraction] = useState<Interaction | null>(null);
+    const nodePositionsRef = useRef(new Map<string, {x: number; y: number}>());
     const modalConfig = useAppSelector((state) => state.window);
     const dispatch = useAppDispatch();
 
-    const {nodes, edges} = useMemo(() => {
+    const {nodes: layoutedNodes, edges} = useMemo(() => {
         const newNodes: Node[] = data.map((drug) => ({
             id: drug._id,
             data: {label: drug.name},
@@ -65,6 +69,27 @@ const GraphView = ({data, interactions = NO_INTERACTIONS, highlightedDrugs = NO_
         return getLayoutedElements(newNodes, newEdges);
     }, [data, interactions, highlightedDrugs]);
 
+    useEffect(() => {
+        setNodes(
+            layoutedNodes.map((node) => ({
+                ...node,
+                position: nodePositionsRef.current.get(node.id) ?? node.position,
+            }))
+        );
+    }, [layoutedNodes]);
+
+    const onNodesChange = useCallback((changes: NodeChange[]) => {
+        setNodes((currentNodes) => {
+            const updatedNodes = applyNodeChanges(changes, currentNodes);
+
+            for (const node of updatedNodes) {
+                nodePositionsRef.current.set(node.id, node.position);
+            }
+
+            return updatedNodes;
+        });
+    }, []);
+
     const handleEdgeClick = (
         event: React.MouseEvent,
         edge: Edge
@@ -100,7 +125,7 @@ const GraphView = ({data, interactions = NO_INTERACTIONS, highlightedDrugs = NO_
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                nodesDraggable={false}
+                onNodesChange={onNodesChange}
                 nodesConnectable={false}
                 fitView
                 onEdgeClick={handleEdgeClick}
