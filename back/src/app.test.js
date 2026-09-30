@@ -28,4 +28,13 @@ describe('app', () => {
             db: 'down'
         });
     });
+
+    test('does not apply expensive endpoint protection to unknown routes', async () => {
+        const response = await request(app)
+            .post('/unknown')
+            .send({});
+
+        expect(response.status).toBe(404);
+        expect(response.text).toBe('Not Found');
+    });
 });

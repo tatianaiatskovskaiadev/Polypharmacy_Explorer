@@ -240,7 +240,7 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 12 suites, 33 tests |
+| `cd back && npm test` | Passed: 12 suites, 34 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed, with 2 React warnings in `GraphView.tsx` |
 

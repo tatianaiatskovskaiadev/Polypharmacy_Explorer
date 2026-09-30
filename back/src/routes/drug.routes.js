@@ -5,12 +5,11 @@ import {
 } from '../controllers/drug.controller.js';
 
 import validate from '../middlewares/validation.middleware.js';
-import {protectExpensiveEndpoint} from '../middlewares/cost-control.middleware.js';
 
 const router = Router();
 
-router.post('/', protectExpensiveEndpoint, validate('createDrug'), createDrug);
-router.post('/search', protectExpensiveEndpoint, validate('searchDrugs'), getSimilarDrugs);
-router.post('/search/symptom', protectExpensiveEndpoint, validate('searchDrugsBySymptom'), getDrugsBySymptom);
+router.post('/', validate('createDrug'), createDrug);
+router.post('/search', validate('searchDrugs'), getSimilarDrugs);
+router.post('/search/symptom', validate('searchDrugsBySymptom'), getDrugsBySymptom);
 
 export default router;
