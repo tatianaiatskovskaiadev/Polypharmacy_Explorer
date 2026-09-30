@@ -6,18 +6,6 @@ class ApiError extends Error {
     }
 }
 
-export class NotFoundError extends ApiError {
-    constructor(message = 'Not Found') {
-        super(404, message);
-    }
-}
-
-export class ConflictError extends ApiError {
-    constructor(message = 'Conflict') {
-        super(409, message);
-    }
-}
-
 export class UnauthorizedError extends ApiError {
     constructor(message = 'Unauthorized') {
         super(401, message);
