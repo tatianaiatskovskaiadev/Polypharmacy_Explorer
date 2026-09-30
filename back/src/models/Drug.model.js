@@ -1,7 +1,5 @@
-import mongoose from 'mongoose';
+import {Schema, model} from "mongoose";
 import {normalizeDrugName} from '../middlewares/normalization.js';
-
-const { Schema, model } = mongoose;
 
 const drugSchema = new Schema({
     name: { type: String, required: true, index: true },
@@ -26,11 +24,10 @@ const drugSchema = new Schema({
     }
 });
 
-drugSchema.pre('validate', function setNormalizedName(next) {
+drugSchema.pre('validate', function setNormalizedName() {
     if (this.name) {
         this.normalizedName = normalizeDrugName(this.name);
     }
-    next();
 });
 
 export const Drug = model('Drug', drugSchema);
