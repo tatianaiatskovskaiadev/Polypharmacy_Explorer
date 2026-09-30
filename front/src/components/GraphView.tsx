@@ -17,13 +17,19 @@ type Props = {
     data: Drug[];
     interactions?: Interaction[];
     highlightedDrugs?: Drug[];
+    highlightedInteractions?: Interaction[];
 }
 
 // Stable references: inline `= []` defaults would change on every render and retrigger the layout effect
 const NO_INTERACTIONS: Interaction[] = [];
 const NO_DRUGS: Drug[] = [];
 
-const GraphView = ({data, interactions = NO_INTERACTIONS, highlightedDrugs = NO_DRUGS} : Props) => {
+const GraphView = ({
+    data,
+    interactions = NO_INTERACTIONS,
+    highlightedDrugs = NO_DRUGS,
+    highlightedInteractions = NO_INTERACTIONS
+} : Props) => {
     const [nodes, setNodes] = useState<Node[]>([]);
     const [selectedInteraction, setSelectedInteraction] = useState<Interaction | null>(null);
     const nodePositionsRef = useRef(new Map<string, {x: number; y: number}>());
@@ -52,22 +58,28 @@ const GraphView = ({data, interactions = NO_INTERACTIONS, highlightedDrugs = NO_
                 : {},
         }));
 
-        const newEdges: Edge[] = interactions.map(
-            (interaction: Interaction) => ({
+        const highlightedInteractionIds = new Set(
+            highlightedInteractions.map((interaction) => interaction._id)
+        );
+
+        const newEdges: Edge[] = interactions.map((interaction: Interaction) => {
+            const isHighlighted = highlightedInteractionIds.has(interaction._id);
+
+            return {
                 id: interaction._id,
                 source: interaction.drugA,
                 target: interaction.drugB,
                 label: interaction.riskLevel,
                 style: {
-                    stroke: interaction.colorCode,
-                    strokeWidth: 2,
+                    stroke: isHighlighted ? "#7c3aed" : interaction.colorCode,
+                    strokeWidth: isHighlighted ? 5 : 2,
                 },
                 animated: true,
-            })
-        );
+            };
+        });
 
         return getLayoutedElements(newNodes, newEdges);
-    }, [data, interactions, highlightedDrugs]);
+    }, [data, interactions, highlightedDrugs, highlightedInteractions]);
 
     useEffect(() => {
         setNodes(

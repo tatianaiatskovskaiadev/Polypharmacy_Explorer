@@ -132,12 +132,12 @@ describe('interaction service', () => {
         expect(upsertInteraction).toHaveBeenCalledTimes(1);
     });
 
-    test('returns cached interaction without reanalysis', async () => {
+    test('returns current cached interaction without reanalysis', async () => {
         const cachedInteraction = {
             _id: 'interaction-1',
             drugA: 'drug-a',
             drugB: 'drug-b',
-            analysisVersion: 1
+            analysisVersion: 3
         };
 
         getInteractionPair.mockResolvedValueOnce(cachedInteraction);
@@ -145,6 +145,55 @@ describe('interaction service', () => {
         await expect(syncInteraction('drug-a', 'drug-b', 'A', 'B')).resolves.toBe(cachedInteraction);
 
         expect(fetchRawInteraction).not.toHaveBeenCalled();
+        expect(normalizeInteractionText).not.toHaveBeenCalled();
+        expect(upsertInteraction).not.toHaveBeenCalled();
+    });
+
+    test('reanalyzes stale cached interaction and keeps edge visible', async () => {
+        const cachedInteraction = {
+            _id: 'interaction-1',
+            drugA: 'drug-a',
+            drugB: 'drug-b',
+            analysisVersion: 2
+        };
+
+        getInteractionPair.mockResolvedValueOnce(cachedInteraction);
+        fetchRawInteraction.mockResolvedValueOnce('FDA text with required dose reduction');
+        normalizeInteractionText.mockResolvedValueOnce({
+            riskLevel: 'major',
+            description: 'Dose reduction is required.',
+            actionRequired: 'Limit dose and monitor patient.'
+        });
+        upsertInteraction.mockResolvedValueOnce({riskLevel: 'major'});
+
+        await syncInteraction('drug-a', 'drug-b', 'A', 'B');
+
+        expect(normalizeInteractionText).toHaveBeenCalledWith(
+            'FDA text with required dose reduction',
+            {
+                drugNameA: 'A',
+                drugNameB: 'B'
+            }
+        );
+        expect(upsertInteraction).toHaveBeenCalledWith(expect.objectContaining({
+            riskLevel: 'major',
+            colorCode: 'orange',
+            analysisVersion: 3
+        }));
+    });
+
+    test('falls back to stale cached interaction when reanalysis has no FDA text', async () => {
+        const cachedInteraction = {
+            _id: 'interaction-1',
+            drugA: 'drug-a',
+            drugB: 'drug-b',
+            analysisVersion: 2
+        };
+
+        getInteractionPair.mockResolvedValueOnce(cachedInteraction);
+        fetchRawInteraction.mockResolvedValueOnce(null);
+
+        await expect(syncInteraction('drug-a', 'drug-b', 'A', 'B')).resolves.toBe(cachedInteraction);
         expect(normalizeInteractionText).not.toHaveBeenCalled();
         expect(upsertInteraction).not.toHaveBeenCalled();
     });

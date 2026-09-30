@@ -13,7 +13,7 @@ This project turns that workflow into an interactive graph:
 1. Search for a drug by name or active ingredient.
 2. Add multiple drugs to the graph.
 3. Fetch and cache pairwise interaction analysis.
-4. Highlight drugs relevant to a symptom or risk phrase using vector search.
+4. Highlight drugs and saved interaction summaries relevant to a symptom or risk phrase.
 5. Open graph edges to inspect an AI-normalized summary grounded in FDA label text.
 
 ## Features
@@ -24,7 +24,7 @@ This project turns that workflow into an interactive graph:
 - Normalized unique drug names to reduce duplicate records from casing and whitespace differences.
 - Canonical interaction pairs, so `A + B` and `B + A` share one cached record.
 - AI normalization with strict Joi validation before storing model output.
-- Symptom/risk semantic search over FDA label embeddings.
+- Symptom/risk search over FDA label embeddings and saved AI-normalized interaction summaries.
 - Centralized API validation and normalized error responses.
 - FDA retry/backoff and graceful degradation for interaction checks when external APIs are rate-limited.
 - Bounded concurrency and in-flight deduplication for expensive interaction analysis.
@@ -207,6 +207,17 @@ curl -X POST http://localhost:3000/search/symptom \
   -d "{\"text\":\"stomach bleeding risk\",\"drugIds\":[\"DRUG_ID_A\",\"DRUG_ID_B\"]}"
 ```
 
+Response shape:
+
+```json
+{
+  "drugs": [],
+  "interactions": []
+}
+```
+
+`drugs` comes from vector search over selected drug FDA label embeddings. `interactions` comes from saved pair summaries/actions, so symptom search can also highlight graph edges when the phrase matches an already analyzed interaction.
+
 Health check:
 
 ```bash
@@ -240,7 +251,7 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 12 suites, 38 tests |
+| `cd back && npm test` | Passed: 13 suites, 42 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed, with 2 React warnings in `GraphView.tsx` |
 
@@ -266,7 +277,8 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 ## Important Design Decisions
 
 - **AI output is treated as untrusted input.** The backend validates normalized interaction data with Joi before it can be stored.
-- **Interaction severity analysis is versioned.** New interaction records store the AI rubric version, while existing cached interactions remain visible during normal demo requests.
+- **Interaction severity analysis is versioned.** New interaction records store the AI rubric version, and stale cached records are reanalyzed with pair-specific context while falling back to cached data if external services fail.
+- **Symptom search has two sources.** Drug matches use vector search over FDA label embeddings; interaction matches use saved AI-normalized pair descriptions and action guidance.
 - **Drug names are normalized before persistence.** A `normalizedName` unique index prevents duplicates caused by casing or extra whitespace.
 - **Interaction pairs are canonicalized.** The repository stores drug pairs in stable order to avoid duplicate `A+B` and `B+A` records.
 - **Interaction analysis uses bounded concurrency.** Cold-cache pair analysis is parallelized with a small concurrency limit to reduce latency without overwhelming FDA/OpenAI.

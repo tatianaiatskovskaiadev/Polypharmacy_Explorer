@@ -43,3 +43,8 @@ export type SymptomSearchRequest = {
     text: string;
     drugIds: string[];
 };
+
+export type SymptomSearchResponse = {
+    drugs: Drug[];
+    interactions: Interaction[];
+};

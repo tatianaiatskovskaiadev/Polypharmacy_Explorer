@@ -1,5 +1,11 @@
 import {createApi, fetchBaseQuery} from "@reduxjs/toolkit/query/react";
-import type {CheckInteractionsRequest, CheckInteractionsResponse, Drug, SymptomSearchRequest} from "../../utils/types";
+import type {
+    CheckInteractionsRequest,
+    CheckInteractionsResponse,
+    Drug,
+    SymptomSearchRequest,
+    SymptomSearchResponse
+} from "../../utils/types";
 
 const DEMO_API_KEY_HEADER = 'x-demo-api-key';
 
@@ -30,7 +36,7 @@ export const drugApi = createApi({
                 body
             })
         }),
-        searchBySymptoms: builder.mutation<Drug[], SymptomSearchRequest>({
+        searchBySymptoms: builder.mutation<SymptomSearchResponse, SymptomSearchRequest>({
             query: (body) => ({
                 url: '/search/symptom',
                 method: 'POST',

@@ -67,14 +67,38 @@ export const checkInteraction = async (drugIds) => {
 
 const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB) => {
     const existingInteraction = await interactionRepository.getInteractionPair(drugIdA, drugIdB);
-    if (existingInteraction) {
+    if (existingInteraction?.analysisVersion === INTERACTION_ANALYSIS_VERSION) {
         return existingInteraction;
     }
 
-    const rawText = await fetchRawInteraction(drugNameA, drugNameB);
-    if (!rawText) return null;
+    let rawText;
+    try {
+        rawText = await fetchRawInteraction(drugNameA, drugNameB);
+    } catch (error) {
+        if (existingInteraction && error instanceof ExternalServiceError) {
+            return existingInteraction;
+        }
 
-    const {riskLevel, description, actionRequired} = await normalizeInteractionText(rawText);
+        throw error;
+    }
+
+    if (!rawText) return existingInteraction ?? null;
+
+    let normalizedInteraction;
+    try {
+        normalizedInteraction = await normalizeInteractionText(rawText, {
+            drugNameA,
+            drugNameB
+        });
+    } catch (error) {
+        if (existingInteraction && error instanceof ExternalServiceError) {
+            return existingInteraction;
+        }
+
+        throw error;
+    }
+
+    const {riskLevel, description, actionRequired} = normalizedInteraction;
 
     return await interactionRepository.upsertInteraction({
         drugA: drugIdA,

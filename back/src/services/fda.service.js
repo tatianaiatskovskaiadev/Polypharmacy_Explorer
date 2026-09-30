@@ -58,9 +58,39 @@ const fetchLabels = async (search, limit) => {
 
 const quote = (value) => `"${value.replaceAll('"', '')}"`;
 
+const simplifyInteractionTerm = (value) => (
+    value
+        .replace(/\b(HYDROCHLORIDE|SODIUM|CALCIUM|POTASSIUM|PHOSPHATE|HBR|HCL)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+);
+
+const getInteractionSearchTerms = (value) => (
+    [...new Set([
+        value,
+        simplifyInteractionTerm(value)
+    ].filter(Boolean))]
+);
+
+const fetchDirectionalInteraction = async (labelDrug, interactingDrug) => {
+    for (const interactionTerm of getInteractionSearchTerms(interactingDrug)) {
+        const results = await fetchLabels(
+            `openfda.generic_name:${quote(labelDrug)} AND drug_interactions:${quote(interactionTerm)}`,
+            1
+        );
+
+        const interactionText = results[0]?.drug_interactions?.[0];
+        if (interactionText) {
+            return interactionText;
+        }
+    }
+
+    return null;
+};
+
 export const fetchRawInteraction = async (drugA, drugB) => {
-    const results = await fetchLabels(`drug_interactions:${quote(drugA)} AND drug_interactions:${quote(drugB)}`, 1);
-    return results[0]?.drug_interactions?.[0] ?? null;
+    return await fetchDirectionalInteraction(drugA, drugB)
+        ?? await fetchDirectionalInteraction(drugB, drugA);
 }
 
 export const fetchAnaloguesFromFDA = async (activeIngredient) => {

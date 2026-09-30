@@ -71,10 +71,15 @@ describe('ai service', () => {
             ]
         });
 
-        await normalizeInteractionText('FDA text says monitor the patient.');
+        await normalizeInteractionText('FDA text says monitor the patient.', {
+            drugNameA: 'AMIODARONE HYDROCHLORIDE',
+            drugNameB: 'SIMVASTATIN'
+        });
 
         const systemPrompt = chatCompletionsCreate.mock.calls[0][0].messages[0].content;
+        expect(systemPrompt).toContain('Analyze ONLY the interaction between "AMIODARONE HYDROCHLORIDE" and "SIMVASTATIN"');
         expect(systemPrompt).toContain('Use this risk rubric');
         expect(systemPrompt).toContain('Do NOT classify as "major" only because the text mentions monitoring');
+        expect(systemPrompt).toContain('maximum coadministered dose');
     });
 });

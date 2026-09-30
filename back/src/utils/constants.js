@@ -28,7 +28,7 @@ export const MAX_EMBEDDING_TEXT_LENGTH = 6_000;
 export const MAX_FDA_SECTION_LENGTH = 1_500;
 
 export const RISK_LEVELS = ['minor', 'moderate', 'major', 'critical'];
-export const INTERACTION_ANALYSIS_VERSION = 2;
+export const INTERACTION_ANALYSIS_VERSION = 3;
 export const COLOR_BY_RISK = {
     minor: 'green',
     moderate: 'yellow',

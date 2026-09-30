@@ -50,7 +50,7 @@ const SearchPanel = () => {
     const [
         searchBySymptoms,
         {
-            data: highlightedDrugs,
+            data: symptomSearchResult,
             isLoading: isLoadingSymptoms,
             isError: isSymptomError,
             error: symptomError
@@ -82,6 +82,10 @@ const SearchPanel = () => {
             activeDrugIds.has(interaction.drugA) &&
             activeDrugIds.has(interaction.drugB)
     );
+
+    const highlightedDrugs = symptomSearchResult?.drugs ?? [];
+    const highlightedInteractions = symptomSearchResult?.interactions ?? [];
+    const activeDrugById = new Map(activeDrugs.map((drug) => [drug._id, drug]));
 
     return (
         <div className={'m-6'}>
@@ -179,8 +183,24 @@ const SearchPanel = () => {
                     </ul>
                 </div>
             ) : null}
+            {highlightedInteractions.length ? (
+                <div className="m-2 max-w-2xl rounded-md border border-purple-300 bg-purple-50 p-3 text-sm text-purple-900">
+                    <div className="font-semibold">Symptom matched saved interaction summaries:</div>
+                    <ul className="mt-2 list-disc pl-5">
+                        {highlightedInteractions.map((interaction) => (
+                            <li key={interaction._id}>
+                                {(activeDrugById.get(interaction.drugA)?.name ?? interaction.drugA)}
+                                {' + '}
+                                {(activeDrugById.get(interaction.drugB)?.name ?? interaction.drugB)}
+                                {` - ${interaction.riskLevel}: ${interaction.description}`}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ) : null}
             <GraphView
                 highlightedDrugs={highlightedDrugs}
+                highlightedInteractions={highlightedInteractions}
                 data={activeDrugs}
                 interactions={visibleInteractions}
             />

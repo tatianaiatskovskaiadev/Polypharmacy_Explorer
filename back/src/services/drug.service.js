@@ -1,4 +1,5 @@
 import * as drugRepository from '../repository/drug.repository.js';
+import * as interactionRepository from '../repository/interaction.repository.js';
 import {createHash} from 'crypto';
 import {createVector} from './ai.service.js';
 import {fetchAnaloguesFromFDA} from './fda.service.js';
@@ -262,13 +263,26 @@ export const getSimilarDrugs = async (text) => {
 
 export const searchDrugsBySymptom = async (symptom, drugIds) => {
 
-    if (!symptom?.trim()) return [];
+    if (!symptom?.trim()) return {
+        drugs: [],
+        interactions: []
+    };
 
-    if (!Array.isArray(drugIds) || drugIds.length === 0) return [];
+    if (!Array.isArray(drugIds) || drugIds.length === 0) return {
+        drugs: [],
+        interactions: []
+    };
 
     const vectorSymptom = await createVector(symptom.trim());
 
-    if (!Array.isArray(vectorSymptom) || vectorSymptom.length === 0) return [];
+    const drugs = Array.isArray(vectorSymptom) && vectorSymptom.length > 0
+        ? await drugRepository.getDrug(vectorSymptom, drugIds)
+        : [];
 
-    return await drugRepository.getDrug(vectorSymptom, drugIds);
+    const interactions = await interactionRepository.searchInteractionsByText(symptom, drugIds);
+
+    return {
+        drugs,
+        interactions
+    };
 };

@@ -6,6 +6,8 @@ const fetchAnaloguesFromFDA = jest.fn();
 const createDrug = jest.fn();
 const getDrugByName = jest.fn();
 const updateDrug = jest.fn();
+const getDrug = jest.fn();
+const searchInteractionsByText = jest.fn();
 
 jest.unstable_mockModule('./ai.service.js', () => ({
     createVector
@@ -17,11 +19,16 @@ jest.unstable_mockModule('./fda.service.js', () => ({
 
 jest.unstable_mockModule('../repository/drug.repository.js', () => ({
     createDrug,
+    getDrug,
     getDrugByName,
     updateDrug
 }));
 
-const {getSimilarDrugs} = await import('./drug.service.js');
+jest.unstable_mockModule('../repository/interaction.repository.js', () => ({
+    searchInteractionsByText
+}));
+
+const {getSimilarDrugs, searchDrugsBySymptom} = await import('./drug.service.js');
 
 const contentHash = (text) => createHash('sha256').update(text).digest('hex');
 
@@ -30,7 +37,9 @@ describe('drug service', () => {
         createVector.mockReset();
         fetchAnaloguesFromFDA.mockReset();
         createDrug.mockReset();
+        getDrug.mockReset();
         getDrugByName.mockReset();
+        searchInteractionsByText.mockReset();
         updateDrug.mockReset();
     });
 
@@ -274,5 +283,27 @@ describe('drug service', () => {
                 embedding: [0.3, 0.4]
             })
         }));
+    });
+
+    test('searches symptoms across drug guidelines and saved interaction summaries', async () => {
+        const matchingDrug = {_id: 'drug-a', name: 'Warfarin'};
+        const matchingInteraction = {
+            _id: 'interaction-1',
+            drugA: 'drug-a',
+            drugB: 'drug-b',
+            description: 'Bleeding risk'
+        };
+
+        createVector.mockResolvedValueOnce([0.1, 0.2]);
+        getDrug.mockResolvedValueOnce([matchingDrug]);
+        searchInteractionsByText.mockResolvedValueOnce([matchingInteraction]);
+
+        await expect(searchDrugsBySymptom('bleeding', ['drug-a', 'drug-b'])).resolves.toEqual({
+            drugs: [matchingDrug],
+            interactions: [matchingInteraction]
+        });
+
+        expect(getDrug).toHaveBeenCalledWith([0.1, 0.2], ['drug-a', 'drug-b']);
+        expect(searchInteractionsByText).toHaveBeenCalledWith('bleeding', ['drug-a', 'drug-b']);
     });
 });
