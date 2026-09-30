@@ -55,4 +55,26 @@ describe('ai service', () => {
             message: 'OpenAI request failed: network timeout'
         });
     });
+
+    test('sends explicit risk rubric to reduce default major classification', async () => {
+        chatCompletionsCreate.mockResolvedValueOnce({
+            choices: [
+                {
+                    message: {
+                        content: JSON.stringify({
+                            riskLevel: 'moderate',
+                            description: 'Monitor for additive adverse effects.',
+                            actionRequired: 'Monitor the patient and adjust therapy if clinically indicated.'
+                        })
+                    }
+                }
+            ]
+        });
+
+        await normalizeInteractionText('FDA text says monitor the patient.');
+
+        const systemPrompt = chatCompletionsCreate.mock.calls[0][0].messages[0].content;
+        expect(systemPrompt).toContain('Use this risk rubric');
+        expect(systemPrompt).toContain('Do NOT classify as "major" only because the text mentions monitoring');
+    });
 });

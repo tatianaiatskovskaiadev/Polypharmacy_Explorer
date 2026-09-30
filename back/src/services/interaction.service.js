@@ -2,7 +2,7 @@ import {fetchRawInteraction} from "./fda.service.js";
 import {normalizeInteractionText} from "./ai.service.js";
 import * as interactionRepository from "../repository/interaction.repository.js";
 import * as drugRepository from "../repository/drug.repository.js";
-import {COLOR_BY_RISK, INTERACTION_SYNC_CONCURRENCY} from "../utils/constants.js";
+import {COLOR_BY_RISK, INTERACTION_ANALYSIS_VERSION, INTERACTION_SYNC_CONCURRENCY} from "../utils/constants.js";
 import {ExternalServiceError} from "../utils/errors.js";
 
 const inFlightInteractionSyncs = new Map();
@@ -67,7 +67,7 @@ export const checkInteraction = async (drugIds) => {
 
 const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB) => {
     const existingInteraction = await interactionRepository.getInteractionPair(drugIdA, drugIdB);
-    if (existingInteraction) {
+    if (existingInteraction?.analysisVersion === INTERACTION_ANALYSIS_VERSION) {
         return existingInteraction;
     }
 
@@ -82,7 +82,8 @@ const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB
         riskLevel,
         colorCode: COLOR_BY_RISK[riskLevel],
         description,
-        actionRequired
+        actionRequired,
+        analysisVersion: INTERACTION_ANALYSIS_VERSION
     });
 }
 

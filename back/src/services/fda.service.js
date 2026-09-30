@@ -59,7 +59,6 @@ const fetchLabels = async (search, limit) => {
 const quote = (value) => `"${value.replaceAll('"', '')}"`;
 
 export const fetchRawInteraction = async (drugA, drugB) => {
-    // Both terms must be scoped to the field, otherwise openFDA searches the second one across all fields
     const results = await fetchLabels(`drug_interactions:${quote(drugA)} AND drug_interactions:${quote(drugB)}`, 1);
     return results[0]?.drug_interactions?.[0] ?? null;
 }
@@ -82,7 +81,6 @@ export const fetchAnaloguesFromFDA = async (activeIngredient) => {
 
         return results.flat();
     } catch (error) {
-        // Analogue search is best-effort: local results are still returned if FDA is unavailable
         console.error('Failed to fetch analogues from openFDA:', error);
         return [];
     }

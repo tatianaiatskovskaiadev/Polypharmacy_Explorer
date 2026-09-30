@@ -76,6 +76,7 @@ const SearchPanel = () => {
     };
 
     const activeDrugIds = new Set(activeDrugs.map((drug) => drug._id));
+
     const visibleInteractions: Interaction[] = (interactionResponse?.interactions ?? []).filter(
         (interaction) =>
             activeDrugIds.has(interaction.drugA) &&
@@ -172,7 +173,7 @@ const SearchPanel = () => {
                                 <span className="font-medium">
                                     {failedPair.drugNameA} + {failedPair.drugNameB}
                                 </span>
-                                {failedPair.reason ? ` — ${failedPair.reason}` : null}
+                                {failedPair.reason ? ` - ${failedPair.reason}` : null}
                             </li>
                         ))}
                     </ul>

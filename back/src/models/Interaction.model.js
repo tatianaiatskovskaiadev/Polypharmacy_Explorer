@@ -15,7 +15,8 @@ const interactionSchema = new Schema({
         required: true
     },
     description: { type: String, required: true },
-    actionRequired: { type: String }
+    actionRequired: { type: String },
+    analysisVersion: { type: Number, required: true, default: 1 }
 }, { timestamps: true });
 
 
