@@ -40,6 +40,92 @@ const hasReusableGuidelines = (drug, embeddingText) => (
     drug.guidelines.embedding.length > 0
 );
 
+const normalizeSearchText = (value) => (
+    String(value ?? '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase()
+);
+
+const splitIngredients = (activeIngredient) => (
+    String(activeIngredient ?? '')
+        .split(/;|,|\s+and\s+/i)
+        .map((ingredient) => normalizeSearchText(ingredient).replace(/^and\s+/, ''))
+        .filter(Boolean)
+);
+
+const hasMultipleIngredients = (activeIngredient) => splitIngredients(activeIngredient).length > 1;
+
+const isCombinationLabel = (value) => /\s+and\s+|,|;/.test(normalizeSearchText(value));
+
+const isSingleIngredientMatch = (drug, normalizedSearchText) => {
+    const ingredients = splitIngredients(drug.activeIngredient);
+    return ingredients.length === 1 && ingredients[0].includes(normalizedSearchText);
+};
+
+const scoreLocalDrugMatch = (drug, searchText) => {
+    const normalizedSearchText = normalizeSearchText(searchText);
+    const normalizedName = normalizeSearchText(drug.name);
+    const ingredients = splitIngredients(drug.activeIngredient);
+
+    if (normalizedName === normalizedSearchText) return 100;
+    if (ingredients.includes(normalizedSearchText)) {
+        return isCombinationLabel(drug.name) ? 75 : 90;
+    }
+    if (isSingleIngredientMatch(drug, normalizedSearchText)) return 80;
+    if (normalizedName.startsWith(normalizedSearchText)) return 70;
+    if (ingredients.some((ingredient) => ingredient.includes(normalizedSearchText))) return 60;
+    if (normalizedName.includes(normalizedSearchText)) return 50;
+
+    return 0;
+};
+
+const rankLocalDrugs = (drugs, searchText) => (
+    [...drugs].sort((drugA, drugB) => (
+        scoreLocalDrugMatch(drugB, searchText) - scoreLocalDrugMatch(drugA, searchText)
+    ))
+);
+
+const getFdaItemName = (item) => item.openfda?.brand_name?.[0] ?? '';
+
+const getFdaItemIngredient = (item) => item.openfda?.generic_name?.[0] ?? '';
+
+const scoreFdaAnalogue = (item, searchText) => {
+    const normalizedSearchText = normalizeSearchText(searchText);
+    const normalizedName = normalizeSearchText(getFdaItemName(item));
+    const normalizedIngredient = normalizeSearchText(getFdaItemIngredient(item));
+    const ingredients = splitIngredients(normalizedIngredient);
+    const isCombination = hasMultipleIngredients(normalizedIngredient);
+
+    if (normalizedIngredient === normalizedSearchText) return 100;
+    if (normalizedName === normalizedSearchText) return 95;
+    if (!isCombination && normalizedIngredient.startsWith(normalizedSearchText)) return 90;
+    if (!isCombination && normalizedIngredient.includes(normalizedSearchText)) return 80;
+    if (ingredients.includes(normalizedSearchText)) return 70;
+    if (normalizedName.includes(normalizedSearchText)) return 60;
+    if (normalizedIngredient.includes(normalizedSearchText)) return 50;
+
+    return 0;
+};
+
+const rankFdaAnalogues = (items, searchText) => (
+    [...items].sort((itemA, itemB) => (
+        scoreFdaAnalogue(itemB, searchText) - scoreFdaAnalogue(itemA, searchText)
+    ))
+);
+
+const mergeRankedDrugResults = (primaryDrugs, secondaryDrugs, searchText) => {
+    const byNormalizedName = new Map();
+
+    for (const drug of [...primaryDrugs, ...secondaryDrugs]) {
+        const key = normalizeSearchText(drug.name);
+        if (!key || byNormalizedName.has(key)) continue;
+        byNormalizedName.set(key, drug);
+    }
+
+    return rankLocalDrugs([...byNormalizedName.values()], searchText);
+};
+
 export const createDrug = async (drug) => {
     const {
         name,
@@ -67,12 +153,14 @@ export const createDrug = async (drug) => {
 
 export const getSimilarDrugs = async (text) => {
 
-    const localDrugs = await drugRepository.getDrugByName(text);
+    const localDrugs = rankLocalDrugs(await drugRepository.getDrugByName(text), text);
 
     const searchIngredient = localDrugs[0]?.activeIngredient ?? text;
 
-    const fdaAnalogues =
-        await fetchAnaloguesFromFDA(searchIngredient);
+    const fdaAnalogues = rankFdaAnalogues(
+        await fetchAnaloguesFromFDA(searchIngredient),
+        text
+    );
 
     if (fdaAnalogues.length === 0) return localDrugs;
 
@@ -163,7 +251,13 @@ export const getSimilarDrugs = async (text) => {
         savedDrugs.push(savedDrug);
     }
 
-    return savedDrugs.length > 0 ? savedDrugs : localDrugs;
+    if (savedDrugs.length === 0) return localDrugs;
+
+    const highConfidenceLocalDrugs = localDrugs.filter(
+        (drug) => scoreLocalDrugMatch(drug, text) >= 80
+    );
+
+    return mergeRankedDrugResults(highConfidenceLocalDrugs, savedDrugs, text);
 };
 
 export const searchDrugsBySymptom = async (symptom, drugIds) => {

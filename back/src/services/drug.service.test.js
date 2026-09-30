@@ -48,6 +48,66 @@ describe('drug service', () => {
         expect(createDrug).not.toHaveBeenCalled();
     });
 
+    test('uses the most relevant local match for FDA analogue search', async () => {
+        getDrugByName.mockResolvedValueOnce([
+            {
+                _id: 'combo-drug',
+                name: 'Omeprazole and Clarithromycin and Amoxicillin',
+                activeIngredient: 'CLARITHROMYCIN'
+            },
+            {
+                _id: 'exact-drug',
+                name: 'Amoxicillin',
+                activeIngredient: 'AMOXICILLIN'
+            }
+        ]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([]);
+
+        await getSimilarDrugs('amoxicillin');
+
+        expect(fetchAnaloguesFromFDA).toHaveBeenCalledWith('AMOXICILLIN');
+    });
+
+    test('ranks single-ingredient FDA analogues before combination products', async () => {
+        getDrugByName
+            .mockResolvedValueOnce([
+                {
+                    _id: 'local-metformin',
+                    name: 'METFORMIN',
+                    activeIngredient: 'METFORMIN'
+                }
+            ])
+            .mockResolvedValue([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([
+            {
+                openfda: {
+                    brand_name: ['ZITUVIMET'],
+                    generic_name: ['SITAGLIPTIN AND METFORMIN HYDROCHLORIDE']
+                },
+                description: ['combo description']
+            },
+            {
+                openfda: {
+                    brand_name: ['METFORMIN HYDROCHLORIDE'],
+                    generic_name: ['METFORMIN HYDROCHLORIDE']
+                },
+                description: ['single ingredient description']
+            }
+        ]);
+        createVector
+            .mockResolvedValueOnce([0.1])
+            .mockResolvedValueOnce([0.2]);
+        createDrug.mockImplementation(async (drug) => drug);
+
+        const result = await getSimilarDrugs('metformin');
+
+        expect(result.map((drug) => drug.name)).toEqual([
+            'METFORMIN',
+            'METFORMIN HYDROCHLORIDE',
+            'ZITUVIMET'
+        ]);
+    });
+
     test('saves FDA analogue when only description text is available', async () => {
         getDrugByName
             .mockResolvedValueOnce([])

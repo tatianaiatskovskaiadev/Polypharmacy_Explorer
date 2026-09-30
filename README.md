@@ -240,7 +240,7 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 12 suites, 37 tests |
+| `cd back && npm test` | Passed: 12 suites, 38 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed, with 2 React warnings in `GraphView.tsx` |
 
@@ -266,7 +266,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 ## Important Design Decisions
 
 - **AI output is treated as untrusted input.** The backend validates normalized interaction data with Joi before it can be stored.
-- **Interaction severity analysis is versioned.** Cached interactions created with an older AI rubric are reanalyzed once after the rubric version changes.
+- **Interaction severity analysis is versioned.** New interaction records store the AI rubric version, while existing cached interactions remain visible during normal demo requests.
 - **Drug names are normalized before persistence.** A `normalizedName` unique index prevents duplicates caused by casing or extra whitespace.
 - **Interaction pairs are canonicalized.** The repository stores drug pairs in stable order to avoid duplicate `A+B` and `B+A` records.
 - **Interaction analysis uses bounded concurrency.** Cold-cache pair analysis is parallelized with a small concurrency limit to reduce latency without overwhelming FDA/OpenAI.

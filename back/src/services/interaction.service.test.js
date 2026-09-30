@@ -132,12 +132,12 @@ describe('interaction service', () => {
         expect(upsertInteraction).toHaveBeenCalledTimes(1);
     });
 
-    test('returns current cached interaction without reanalysis', async () => {
+    test('returns cached interaction without reanalysis', async () => {
         const cachedInteraction = {
             _id: 'interaction-1',
             drugA: 'drug-a',
             drugB: 'drug-b',
-            analysisVersion: 2
+            analysisVersion: 1
         };
 
         getInteractionPair.mockResolvedValueOnce(cachedInteraction);
@@ -147,31 +147,6 @@ describe('interaction service', () => {
         expect(fetchRawInteraction).not.toHaveBeenCalled();
         expect(normalizeInteractionText).not.toHaveBeenCalled();
         expect(upsertInteraction).not.toHaveBeenCalled();
-    });
-
-    test('reanalyzes stale cached interaction versions', async () => {
-        getInteractionPair.mockResolvedValueOnce({
-            _id: 'interaction-1',
-            drugA: 'drug-a',
-            drugB: 'drug-b',
-            analysisVersion: 1
-        });
-        fetchRawInteraction.mockResolvedValueOnce('FDA interaction text');
-        normalizeInteractionText.mockResolvedValueOnce({
-            riskLevel: 'moderate',
-            description: 'Interaction summary',
-            actionRequired: 'Monitor patient'
-        });
-        upsertInteraction.mockResolvedValueOnce({});
-
-        await syncInteraction('drug-a', 'drug-b', 'A', 'B');
-
-        expect(fetchRawInteraction).toHaveBeenCalledTimes(1);
-        expect(upsertInteraction).toHaveBeenCalledWith(expect.objectContaining({
-            riskLevel: 'moderate',
-            colorCode: 'yellow',
-            analysisVersion: 2
-        }));
     });
 
     test('continues interaction check when one external pair sync is rate limited', async () => {

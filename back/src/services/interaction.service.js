@@ -67,7 +67,7 @@ export const checkInteraction = async (drugIds) => {
 
 const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB) => {
     const existingInteraction = await interactionRepository.getInteractionPair(drugIdA, drugIdB);
-    if (existingInteraction?.analysisVersion === INTERACTION_ANALYSIS_VERSION) {
+    if (existingInteraction) {
         return existingInteraction;
     }
 
