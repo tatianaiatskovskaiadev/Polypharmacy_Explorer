@@ -47,9 +47,7 @@ export const createDrug = async (drug) => {
         originalText
     } = drug;
 
-    const embedding = originalText
-        ? await createVector(originalText)
-        : [];
+    const embedding = originalText ? await createVector(originalText) : [];
 
     const data = {
         name,
@@ -69,49 +67,33 @@ export const createDrug = async (drug) => {
 
 export const getSimilarDrugs = async (text) => {
 
-    const localDrugs =
-        await drugRepository.getDrugByName(text);
+    const localDrugs = await drugRepository.getDrugByName(text);
 
-    const searchIngredient =
-        localDrugs.length > 0
-            ? localDrugs[0].activeIngredient
-            : text;
+    const searchIngredient = localDrugs[0]?.activeIngredient ?? text;
 
     const fdaAnalogues =
         await fetchAnaloguesFromFDA(searchIngredient);
 
-    if (fdaAnalogues.length === 0) {
-        return localDrugs;
-    }
+    if (fdaAnalogues.length === 0) return localDrugs;
 
     const savedDrugs = [];
 
-
     for (const item of fdaAnalogues) {
 
-        const name =
-            item.openfda?.brand_name?.[0];
+        const name = item.openfda?.brand_name?.[0];
 
         const itemIngredient =
             item.openfda?.generic_name?.[0] ||
             searchIngredient;
 
-        if (!name) {
-            continue;
-        }
-
+        if (!name) continue;
 
         const embeddingText =
             buildEmbeddingText(item);
 
-        if (!embeddingText) {
-            continue;
-        }
+        if (!embeddingText) continue;
 
-
-        const existing =
-            await drugRepository.getDrugByName(name);
-
+        const existing = await drugRepository.getDrugByName(name);
 
         if (existing.length > 0) {
 
@@ -124,19 +106,13 @@ export const getSimilarDrugs = async (text) => {
                             drug._id.toString() ===
                             drugFromDb._id.toString()
                     );
-
-
                 if (!isAlreadyInList) {
                     savedDrugs.push(drugFromDb);
                 }
-
-
                 continue;
             }
 
-            const embedding =
-                await createVector(embeddingText);
-
+            const embedding = await createVector(embeddingText);
 
             drugFromDb =
                 await drugRepository.updateDrug(
@@ -148,25 +124,16 @@ export const getSimilarDrugs = async (text) => {
 
                         guidelines: {
                             source: 'FDA',
-
-                            originalText:
-                            embeddingText,
-
-                            contentHash:
-                            createContentHash(embeddingText),
-
+                            originalText: embeddingText,
+                            contentHash: createContentHash(embeddingText),
                             embedding
                         }
                     }
                 );
 
-
             if (!drugFromDb) {
-                throw new Error(
-                    `Drug not found after update: ${name}`
-                );
+                throw new Error(`Drug not found after update: ${name}`);
             }
-
 
             const isAlreadyInList =
                 savedDrugs.some(
@@ -175,81 +142,39 @@ export const getSimilarDrugs = async (text) => {
                         drugFromDb._id.toString()
                 );
 
-
-            if (!isAlreadyInList) {
-                savedDrugs.push(drugFromDb);
-            }
-
-
+            if (!isAlreadyInList) savedDrugs.push(drugFromDb);
             continue;
         }
 
-
-        const embedding =
-            await createVector(embeddingText);
-
+        const embedding = await createVector(embeddingText);
 
         const savedDrug =
             await drugRepository.createDrug({
                 name,
-
-                activeIngredient:
-                itemIngredient,
-
+                activeIngredient: itemIngredient,
                 guidelines: {
                     source: 'FDA',
-
-                    originalText:
-                    embeddingText,
-
-                    contentHash:
-                    createContentHash(embeddingText),
-
+                    originalText: embeddingText,
+                    contentHash: createContentHash(embeddingText),
                     embedding
                 }
             });
 
-
         savedDrugs.push(savedDrug);
     }
 
-
-    return savedDrugs.length > 0
-        ? savedDrugs
-        : localDrugs;
+    return savedDrugs.length > 0 ? savedDrugs : localDrugs;
 };
 
-export const searchDrugsBySymptom = async (
-    symptom,
-    drugIds
-) => {
+export const searchDrugsBySymptom = async (symptom, drugIds) => {
 
-    if (!symptom?.trim()) {
-        return [];
-    }
+    if (!symptom?.trim()) return [];
 
+    if (!Array.isArray(drugIds) || drugIds.length === 0) return [];
 
-    if (
-        !Array.isArray(drugIds) ||
-        drugIds.length === 0
-    ) {
-        return [];
-    }
+    const vectorSymptom = await createVector(symptom.trim());
 
+    if (!Array.isArray(vectorSymptom) || vectorSymptom.length === 0) return [];
 
-    const vectorSymptom =
-        await createVector(symptom.trim());
-
-    if (
-        !Array.isArray(vectorSymptom) ||
-        vectorSymptom.length === 0
-    ) {
-        return [];
-    }
-
-
-    return await drugRepository.getDrug(
-        vectorSymptom,
-        drugIds
-    );
+    return await drugRepository.getDrug(vectorSymptom, drugIds);
 };

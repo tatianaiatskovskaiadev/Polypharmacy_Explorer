@@ -1,6 +1,6 @@
 import {Drug} from "../models/Drug.model.js"
 import mongoose from "mongoose";
-import {normalizeDrugName} from "../utils/normalization.js";
+import {normalizeDrugName} from "../middlewares/normalization.js";
 import {
     DRUG_EMBEDDING_PATH,
     VECTOR_CANDIDATES_MULTIPLIER,

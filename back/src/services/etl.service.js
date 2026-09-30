@@ -2,7 +2,7 @@ import fs from 'fs';
 import csv from "csv-parser";
 import {Drug} from "../models/Drug.model.js";
 import {ETL_BATCH_SIZE} from "../utils/constants.js";
-import {normalizeDrugName} from "../utils/normalization.js";
+import {normalizeDrugName} from "../middlewares/normalization.js";
 
 // Streams the CSV so memory usage stays constant regardless of file size.
 // Errors are propagated to the caller so a failed import is never reported as success.

@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import {normalizeDrugName} from '../utils/normalization.js';
+import {normalizeDrugName} from '../middlewares/normalization.js';
 
 const { Schema, model } = mongoose;
 

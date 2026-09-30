@@ -1,4 +1,4 @@
-import {normalizeDrugName} from "../utils/normalization.js";
+import {normalizeDrugName} from "../middlewares/normalization.js";
 
 export const buildNormalizedNameBackfillPlan = (drugs) => {
     const updates = [];
