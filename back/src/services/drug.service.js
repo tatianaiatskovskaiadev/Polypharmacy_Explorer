@@ -3,6 +3,7 @@ import * as interactionRepository from '../repository/interaction.repository.js'
 import {createHash} from 'crypto';
 import {createVector} from './ai.service.js';
 import {fetchAnaloguesFromFDA} from './fda.service.js';
+import {indexFdaPassages} from './fda-passage.service.js';
 import {MAX_EMBEDDING_TEXT_LENGTH, MAX_FDA_SECTION_LENGTH} from '../utils/constants.js';
 
 const limitText = (text, maxLength) => (
@@ -189,6 +190,7 @@ export const getSimilarDrugs = async (text) => {
             let drugFromDb = existing[0];
 
             if (hasReusableGuidelines(drugFromDb, embeddingText)) {
+                await indexFdaPassages(item, drugFromDb._id, drugFromDb.name);
                 const isAlreadyInList =
                     savedDrugs.some(
                         drug =>
@@ -224,6 +226,8 @@ export const getSimilarDrugs = async (text) => {
                 throw new Error(`Drug not found after update: ${name}`);
             }
 
+            await indexFdaPassages(item, drugFromDb._id, drugFromDb.name);
+
             const isAlreadyInList =
                 savedDrugs.some(
                     drug =>
@@ -248,6 +252,8 @@ export const getSimilarDrugs = async (text) => {
                     embedding
                 }
             });
+
+        await indexFdaPassages(item, savedDrug._id, savedDrug.name);
 
         savedDrugs.push(savedDrug);
     }

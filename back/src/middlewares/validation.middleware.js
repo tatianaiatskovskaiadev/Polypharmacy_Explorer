@@ -22,6 +22,10 @@ const schemas = {
         text: Joi.string().trim().min(1).max(500).required(),
         drugIds: Joi.array().items(objectId).min(1).max(50).required()
     }),
+    ragAnswer: Joi.object({
+        question: Joi.string().trim().min(5).max(1000).required(),
+        drugIds: Joi.array().items(objectId).unique().min(1).max(20).required()
+    }),
     checkInteractions: Joi.object({
         drugIds: Joi.array().items(objectId).unique().min(1).max(20).required()
     }),

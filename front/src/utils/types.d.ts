@@ -48,3 +48,23 @@ export type SymptomSearchResponse = {
     drugs: Drug[];
     interactions: Interaction[];
 };
+
+export type RagAnswerRequest = {
+    question: string;
+    drugIds: string[];
+};
+
+export type RagSource = {
+    number: number;
+    drugName: string;
+    section: string;
+    text: string;
+    sourceUrl: string;
+    score: number;
+};
+
+export type RagAnswerResponse = {
+    answer: string;
+    sources: RagSource[];
+    promptVersion: string;
+};

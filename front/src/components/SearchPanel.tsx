@@ -1,5 +1,6 @@
 import {useEffect, useState} from "react";
 import {
+    useAnswerQuestionMutation,
     useLazyGetDrugsQuery,
     useLazyGetInteractionsQuery,
     useSearchBySymptomsMutation
@@ -47,6 +48,14 @@ const SearchPanel = () => {
     ] = useLazyGetInteractionsQuery()
 
     const [symptomText, setSymptomText] = useState('');
+    const [question, setQuestion] = useState('');
+    const [askQuestion, {
+        data: ragResult,
+        isLoading: isLoadingAnswer,
+        isError: isAnswerError,
+        error: answerError,
+        reset: resetAnswer
+    }] = useAnswerQuestionMutation();
     const [
         searchBySymptoms,
         {
@@ -65,6 +74,7 @@ const SearchPanel = () => {
     }, [activeDrugs, getInteractions]);
 
     const handleAddDrug = (newDrug: Drug) => {
+        resetAnswer();
         setActiveDrugs((prev) => {
             if (prev.some((drug) => drug._id === newDrug._id)) return prev;
             return [...prev, newDrug];
@@ -72,6 +82,7 @@ const SearchPanel = () => {
     };
 
     const handleRemoveDrug = (drugId: string) => {
+        resetAnswer();
         setActiveDrugs((prev) => prev.filter((drug) => drug._id !== drugId));
     };
 
@@ -149,6 +160,56 @@ const SearchPanel = () => {
                         </button>
                     ))}
                 </div>
+            ) : null}
+            <form
+                className="m-2 max-w-2xl rounded-md border border-gray-300 p-3"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    if (question.trim().length < 5 || activeDrugs.length === 0) return;
+                    askQuestion({question: question.trim(), drugIds: activeDrugs.map((drug) => drug._id)});
+                }}
+            >
+                <label className="block font-medium" htmlFor="rag-question">Ask about selected drugs</label>
+                <textarea
+                    id="rag-question"
+                    className="mt-2 w-full rounded-md border border-gray-300 p-2"
+                    value={question}
+                    maxLength={1000}
+                    rows={3}
+                    placeholder="What do the FDA labels say about these drugs?"
+                    onChange={(event) => setQuestion(event.target.value)}
+                />
+                <button
+                    className="mt-2 rounded-md border border-gray-300 px-3 py-2"
+                    type="submit"
+                    disabled={isLoadingAnswer || activeDrugs.length === 0 || question.trim().length < 5}
+                >
+                    {isLoadingAnswer ? 'Finding FDA evidence...' : 'Ask FDA labels'}
+                </button>
+                {activeDrugs.length === 0 ? <p className="mt-2 text-sm text-gray-600">Select a drug first.</p> : null}
+            </form>
+            {isAnswerError ? (
+                <div className="m-2 text-sm text-red-700">
+                    {getApiErrorMessage(answerError, 'Unable to answer from FDA labels.')}
+                </div>
+            ) : null}
+            {ragResult && !isLoadingAnswer ? (
+                <section className="m-2 max-w-2xl rounded-md border border-blue-300 bg-blue-50 p-3" aria-label="FDA evidence answer">
+                    <h2 className="font-semibold">Answer from FDA labels</h2>
+                    <p className="mt-2 whitespace-pre-wrap">{ragResult.answer}</p>
+                    {ragResult.sources.length > 0 ? (
+                        <ol className="mt-3 space-y-2 text-sm">
+                            {ragResult.sources.map((source) => (
+                                <li key={source.number}>
+                                    [{source.number}] {source.drugName} — {source.section.replaceAll('_', ' ')}:{' '}
+                                    <a className="underline" href={source.sourceUrl} target="_blank" rel="noopener noreferrer">FDA label</a>
+                                    <p className="mt-1 text-gray-700">{source.text}</p>
+                                </li>
+                            ))}
+                        </ol>
+                    ) : null}
+                    <p className="mt-3 text-xs text-gray-600">AI-generated summary of FDA label excerpts. Not medical advice.</p>
+                </section>
             ) : null}
             {isLoadingInteractions ? (
                 <div className="m-2 text-sm text-gray-600">Checking drug interactions...</div>

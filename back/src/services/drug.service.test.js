@@ -2,6 +2,7 @@ import {beforeEach, describe, expect, jest, test} from '@jest/globals';
 import {createHash} from 'crypto';
 
 const createVector = jest.fn();
+const createVectors = jest.fn();
 const fetchAnaloguesFromFDA = jest.fn();
 const createDrug = jest.fn();
 const getDrugByName = jest.fn();
@@ -10,7 +11,8 @@ const getDrug = jest.fn();
 const searchInteractionsByText = jest.fn();
 
 jest.unstable_mockModule('./ai.service.js', () => ({
-    createVector
+    createVector,
+    createVectors
 }));
 
 jest.unstable_mockModule('./fda.service.js', () => ({

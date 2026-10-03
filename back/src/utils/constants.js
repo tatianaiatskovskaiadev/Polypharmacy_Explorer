@@ -22,6 +22,13 @@ export const OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
 export const OPENAI_CHAT_MODEL = 'gpt-4o-mini';
 export const OPENAI_EMBEDDING_ENCODING_FORMAT = 'float';
 export const OPENAI_JSON_RESPONSE_FORMAT = 'json_object';
+export const RAG_PROMPT_VERSION = 'rag-answer-v1';
+export const FDA_PASSAGE_LENGTH = 1000;
+export const FDA_PASSAGE_OVERLAP = 100;
+export const FDA_MAX_PASSAGES_PER_LABEL = 24;
+export const RAG_RETRIEVAL_LIMIT = 6;
+export const FDA_PASSAGE_VECTOR_INDEX = 'fda_passage_vector_index';
+export const FDA_PASSAGE_SIMILARITY_THRESHOLD = 0.55;
 
 export const MAX_EMBEDDING_INPUT_LENGTH = 8_000;
 export const MAX_EMBEDDING_TEXT_LENGTH = 6_000;

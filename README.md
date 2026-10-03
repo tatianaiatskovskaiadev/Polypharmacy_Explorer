@@ -25,6 +25,7 @@ This project turns that workflow into an interactive graph:
 - Canonical interaction pairs, so `A + B` and `B + A` share one cached record.
 - AI normalization with strict Joi validation before storing model output.
 - Symptom/risk search over FDA label embeddings and saved AI-normalized interaction summaries.
+- RAG answers over indexed FDA label passages, with source excerpts and links.
 - Centralized API validation and normalized error responses.
 - FDA retry/backoff and graceful degradation for interaction checks when external APIs are rate-limited.
 - Bounded concurrency and in-flight deduplication for expensive interaction analysis.
@@ -40,6 +41,11 @@ flowchart LR
     API --> FDA[openFDA Drug Label API]
     API --> OpenAI[OpenAI Embeddings + Chat]
     Mongo --> Graph[Cached Drugs + Interactions]
+    FDA --> Passages[FDA Label Passages]
+    Passages --> Mongo
+    API --> RAG[RAG Retrieval + Answer]
+    RAG --> Mongo
+    RAG --> OpenAI
 ```
 
 Backend structure:
@@ -71,6 +77,19 @@ Backend structure:
 - MongoDB Atlas Vector Search index for symptom/risk semantic search
 
 Basic drug search and interaction caching use MongoDB collections. The `/search/symptom` endpoint uses MongoDB `$vectorSearch`, so a plain local MongoDB instance is not enough for that feature unless it supports the required vector search capability.
+
+The `/rag/answer` endpoint also requires a second Atlas Vector Search index on the `fdapassages` collection. Create it with the name `fda_passage_vector_index` and this definition (the 1536 dimensions match `text-embedding-3-small`):
+
+```json
+{
+  "fields": [
+    {"type": "vector", "path": "embedding", "numDimensions": 1536, "similarity": "cosine"},
+    {"type": "filter", "path": "drugId"}
+  ]
+}
+```
+
+Searching for a drug through `/search` now indexes its openFDA label passages. Re-search previously saved drugs to populate the new collection before asking questions about them. Label passages without an openFDA record ID are skipped because they cannot be linked to a specific source record. Passage embeddings are reused when the source text and embedding model have not changed.
 
 ## Environment
 
@@ -218,6 +237,17 @@ Response shape:
 
 `drugs` comes from vector search over selected drug FDA label embeddings. `interactions` comes from saved pair summaries/actions, so symptom search can also highlight graph edges when the phrase matches an already analyzed interaction.
 
+Ask a question grounded in indexed FDA label passages for selected drugs:
+
+```bash
+curl -X POST http://localhost:3000/rag/answer \
+  -H "Content-Type: application/json" \
+  -H "x-demo-api-key: change-me" \
+  -d '{"question":"What do the labels say about bleeding risk?","drugIds":["DRUG_ID_A","DRUG_ID_B"]}'
+```
+
+The response contains `answer`, `sources`, and `promptVersion`. Each source includes a citation number, drug name, FDA section, excerpt, label URL, and retrieval score. If no relevant passages are available, the API returns an explicit insufficient-evidence answer with an empty `sources` array. The answer is a summary of retrieved label excerpts, not a clinical interaction assessment.
+
 Health check:
 
 ```bash
@@ -299,6 +329,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - CI exists for backend tests and frontend build/lint, but deployment/CD and Docker image build checks are not configured yet.
 - Frontend UX covers removal, loading, common API errors, and partial interaction failure details, but still needs richer empty states, per-pair progress, and more polished interaction details.
 - MongoDB Atlas Vector Search index setup must be configured outside the repository.
+- RAG only covers FDA labels indexed through drug search; older cached drugs need to be searched again. Passage indexing is capped per label, so long labels may have incomplete coverage.
 - In-flight interaction deduplication is per Node process; multi-instance deployments need a distributed lock or persistent pending status.
 - Existing MongoDB collections created before `normalizedName` still require the documented one-time backfill before deployment.
 

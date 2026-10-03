@@ -3,6 +3,8 @@ import type {
     CheckInteractionsRequest,
     CheckInteractionsResponse,
     Drug,
+    RagAnswerRequest,
+    RagAnswerResponse,
     SymptomSearchRequest,
     SymptomSearchResponse
 } from "../../utils/types";
@@ -43,7 +45,19 @@ export const drugApi = createApi({
                 body
             })
         }),
+        answerQuestion: builder.mutation<RagAnswerResponse, RagAnswerRequest>({
+            query: (body) => ({
+                url: '/rag/answer',
+                method: 'POST',
+                body
+            })
+        }),
     })
 })
 
-export const {useLazyGetDrugsQuery, useLazyGetInteractionsQuery, useSearchBySymptomsMutation} = drugApi;
+export const {
+    useLazyGetDrugsQuery,
+    useLazyGetInteractionsQuery,
+    useSearchBySymptomsMutation,
+    useAnswerQuestionMutation
+} = drugApi;
