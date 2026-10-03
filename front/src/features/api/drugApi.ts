@@ -1,5 +1,6 @@
 import {createApi, fetchBaseQuery} from "@reduxjs/toolkit/query/react";
 import type {
+    AgentAnswerResponse,
     CheckInteractionsRequest,
     CheckInteractionsResponse,
     Drug,
@@ -52,6 +53,13 @@ export const drugApi = createApi({
                 body
             })
         }),
+        askAgent: builder.mutation<AgentAnswerResponse, RagAnswerRequest>({
+            query: (body) => ({
+                url: '/agent/ask',
+                method: 'POST',
+                body
+            })
+        }),
     })
 })
 
@@ -59,5 +67,6 @@ export const {
     useLazyGetDrugsQuery,
     useLazyGetInteractionsQuery,
     useSearchBySymptomsMutation,
-    useAnswerQuestionMutation
+    useAnswerQuestionMutation,
+    useAskAgentMutation
 } = drugApi;

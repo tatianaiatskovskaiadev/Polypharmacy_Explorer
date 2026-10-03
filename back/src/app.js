@@ -6,6 +6,7 @@ import {corsOptions} from "./configuration/corsOptions.js";
 import drugRoutes from "./routes/drug.routes.js";
 import interactionRoutes from "./routes/interaction.routes.js";
 import ragRoutes from './routes/rag.routes.js';
+import agentRoutes from './routes/agent.routes.js';
 import {protectExpensiveEndpoint} from "./middlewares/cost-control.middleware.js";
 
 const app = express();
@@ -16,7 +17,8 @@ const EXPENSIVE_ENDPOINTS = [
     '/search/symptom',
     '/interactions/check',
     '/interactions/sync',
-    '/rag/answer'
+    '/rag/answer',
+    '/agent/ask'
 ];
 
 app.use(cors(corsOptions));
@@ -33,6 +35,7 @@ app.post(EXPENSIVE_ENDPOINTS, protectExpensiveEndpoint);
 app.use('/', drugRoutes);
 app.use('/', interactionRoutes);
 app.use('/', ragRoutes);
+app.use('/', agentRoutes);
 
 app.use((req, res) => res.status(404).type('text/plain; charset=utf-8').send('Not Found'));
 

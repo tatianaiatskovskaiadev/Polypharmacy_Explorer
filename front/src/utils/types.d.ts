@@ -68,3 +68,7 @@ export type RagAnswerResponse = {
     sources: RagSource[];
     promptVersion: string;
 };
+
+export type AgentAnswerResponse = RagAnswerResponse & {
+    toolCalls: {name: string; status: 'ok' | 'error'}[];
+};

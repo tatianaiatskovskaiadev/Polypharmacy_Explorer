@@ -26,6 +26,7 @@ This project turns that workflow into an interactive graph:
 - AI normalization with strict Joi validation before storing model output.
 - Symptom/risk search over FDA label embeddings and saved AI-normalized interaction summaries.
 - RAG answers over indexed FDA label passages, with source excerpts and links.
+- Tool-calling agent that can inspect selected drugs, check interactions, and retrieve FDA evidence before answering.
 - Centralized API validation and normalized error responses.
 - FDA retry/backoff and graceful degradation for interaction checks when external APIs are rate-limited.
 - Bounded concurrency and in-flight deduplication for expensive interaction analysis.
@@ -46,6 +47,10 @@ flowchart LR
     API --> RAG[RAG Retrieval + Answer]
     RAG --> Mongo
     RAG --> OpenAI
+    API --> Agent[Tool-Calling Agent]
+    Agent --> Mongo
+    Agent --> FDA
+    Agent --> OpenAI
 ```
 
 Backend structure:
@@ -247,6 +252,17 @@ curl -X POST http://localhost:3000/rag/answer \
 ```
 
 The response contains `answer`, `sources`, and `promptVersion`. Each source includes a citation number, drug name, FDA section, excerpt, label URL, and retrieval score. If no relevant passages are available, the API returns an explicit insufficient-evidence answer with an empty `sources` array. The answer is a summary of retrieved label excerpts, not a clinical interaction assessment.
+
+The agent endpoint accepts the same payload for up to four selected drugs:
+
+```bash
+curl -X POST http://localhost:3000/agent/ask \
+  -H "Content-Type: application/json" \
+  -H "x-demo-api-key: change-me" \
+  -d '{"question":"What interaction evidence is available?","drugIds":["DRUG_ID_A","DRUG_ID_B"]}'
+```
+
+The agent chooses among three server-side tools: selected drug lookup, pairwise interaction checking, and FDA passage retrieval. Its response adds `toolCalls` to the RAG answer format. Tool access is restricted to the selected drug IDs; the interaction check runs at most once and FDA retrieval at most twice per request. Answers without valid FDA passage citations return an insufficient-evidence response. Cached interaction summaries help the agent find evidence but are not treated as citations.
 
 Health check:
 

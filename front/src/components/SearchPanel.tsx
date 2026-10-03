@@ -1,5 +1,6 @@
 import {useEffect, useState} from "react";
 import {
+    useAskAgentMutation,
     useAnswerQuestionMutation,
     useLazyGetDrugsQuery,
     useLazyGetInteractionsQuery,
@@ -7,6 +8,7 @@ import {
 } from "../features/api/drugApi.ts";
 import List from "./List.tsx";
 import GraphView from "./GraphView.tsx";
+import EvidenceAnswer from './EvidenceAnswer.tsx';
 import type {Drug, Interaction} from "../utils/types";
 
 type ApiError = {
@@ -56,6 +58,13 @@ const SearchPanel = () => {
         error: answerError,
         reset: resetAnswer
     }] = useAnswerQuestionMutation();
+    const [askAgent, {
+        data: agentResult,
+        isLoading: isLoadingAgent,
+        isError: isAgentError,
+        error: agentError,
+        reset: resetAgent
+    }] = useAskAgentMutation();
     const [
         searchBySymptoms,
         {
@@ -75,6 +84,7 @@ const SearchPanel = () => {
 
     const handleAddDrug = (newDrug: Drug) => {
         resetAnswer();
+        resetAgent();
         setActiveDrugs((prev) => {
             if (prev.some((drug) => drug._id === newDrug._id)) return prev;
             return [...prev, newDrug];
@@ -83,6 +93,7 @@ const SearchPanel = () => {
 
     const handleRemoveDrug = (drugId: string) => {
         resetAnswer();
+        resetAgent();
         setActiveDrugs((prev) => prev.filter((drug) => drug._id !== drugId));
     };
 
@@ -166,6 +177,7 @@ const SearchPanel = () => {
                 onSubmit={(event) => {
                     event.preventDefault();
                     if (question.trim().length < 5 || activeDrugs.length === 0) return;
+                    resetAgent();
                     askQuestion({question: question.trim(), drugIds: activeDrugs.map((drug) => drug._id)});
                 }}
             >
@@ -186,30 +198,40 @@ const SearchPanel = () => {
                 >
                     {isLoadingAnswer ? 'Finding FDA evidence...' : 'Ask FDA labels'}
                 </button>
+                <button
+                    className="mt-2 ml-2 rounded-md border border-gray-300 px-3 py-2"
+                    type="button"
+                    disabled={isLoadingAgent || activeDrugs.length === 0 || activeDrugs.length > 4 || question.trim().length < 5}
+                    onClick={() => {
+                        resetAnswer();
+                        askAgent({question: question.trim(), drugIds: activeDrugs.map((drug) => drug._id)});
+                    }}
+                >
+                    {isLoadingAgent ? 'Using tools...' : 'Ask agent'}
+                </button>
                 {activeDrugs.length === 0 ? <p className="mt-2 text-sm text-gray-600">Select a drug first.</p> : null}
+                {activeDrugs.length > 4 ? <p className="mt-2 text-sm text-gray-600">The agent supports up to four selected drugs.</p> : null}
             </form>
             {isAnswerError ? (
                 <div className="m-2 text-sm text-red-700">
                     {getApiErrorMessage(answerError, 'Unable to answer from FDA labels.')}
                 </div>
             ) : null}
+            {isAgentError ? (
+                <div className="m-2 text-sm text-red-700">
+                    {getApiErrorMessage(agentError, 'Unable to run the drug agent.')}
+                </div>
+            ) : null}
             {ragResult && !isLoadingAnswer ? (
-                <section className="m-2 max-w-2xl rounded-md border border-blue-300 bg-blue-50 p-3" aria-label="FDA evidence answer">
-                    <h2 className="font-semibold">Answer from FDA labels</h2>
-                    <p className="mt-2 whitespace-pre-wrap">{ragResult.answer}</p>
-                    {ragResult.sources.length > 0 ? (
-                        <ol className="mt-3 space-y-2 text-sm">
-                            {ragResult.sources.map((source) => (
-                                <li key={source.number}>
-                                    [{source.number}] {source.drugName} — {source.section.replaceAll('_', ' ')}:{' '}
-                                    <a className="underline" href={source.sourceUrl} target="_blank" rel="noopener noreferrer">FDA label</a>
-                                    <p className="mt-1 text-gray-700">{source.text}</p>
-                                </li>
-                            ))}
-                        </ol>
-                    ) : null}
-                    <p className="mt-3 text-xs text-gray-600">AI-generated summary of FDA label excerpts. Not medical advice.</p>
-                </section>
+                <EvidenceAnswer title="Answer from FDA labels" answer={ragResult.answer} sources={ragResult.sources}/>
+            ) : null}
+            {agentResult && !isLoadingAgent ? (
+                <EvidenceAnswer
+                    title="Agent answer from FDA labels"
+                    answer={agentResult.answer}
+                    sources={agentResult.sources}
+                    toolCalls={agentResult.toolCalls}
+                />
             ) : null}
             {isLoadingInteractions ? (
                 <div className="m-2 text-sm text-gray-600">Checking drug interactions...</div>

@@ -26,6 +26,10 @@ const schemas = {
         question: Joi.string().trim().min(5).max(1000).required(),
         drugIds: Joi.array().items(objectId).unique().min(1).max(20).required()
     }),
+    agentAsk: Joi.object({
+        question: Joi.string().trim().min(5).max(1000).required(),
+        drugIds: Joi.array().items(objectId).unique().min(1).max(4).required()
+    }),
     checkInteractions: Joi.object({
         drugIds: Joi.array().items(objectId).unique().min(1).max(20).required()
     }),

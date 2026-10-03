@@ -70,6 +70,19 @@ export const answerFromEvidence = async (question, passages) => {
     return answer.trim();
 };
 
+export const completeAgentTurn = async (messages, tools, toolChoice = 'auto') => {
+    const response = await callOpenAI(() => openai.chat.completions.create({
+        model: OPENAI_CHAT_MODEL,
+        messages,
+        tools,
+        tool_choice: toolChoice,
+        temperature: 0
+    }));
+    const message = response.choices[0]?.message;
+    if (!message) throw new ExternalServiceError('LLM returned no agent message');
+    return message;
+};
+
 export const normalizeInteractionText = async (rawText, context = {}) => {
     const pairContext = context.drugNameA && context.drugNameB
         ? `Analyze ONLY the interaction between "${context.drugNameA}" and "${context.drugNameB}".`

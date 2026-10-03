@@ -39,6 +39,18 @@ describe('app', () => {
         expect(response.body.path).toBe('/rag/answer');
     });
 
+    test('limits agent requests to four selected drugs', async () => {
+        const response = await request(app)
+            .post('/agent/ask')
+            .set(DEMO_API_KEY_HEADER, process.env.DEMO_API_KEY ?? '')
+            .send({question: 'What interactions are described?', drugIds: Array.from({length: 5}, (_, index) => (
+                index.toString(16).padStart(24, '0')
+            ))});
+
+        expect(response.status).toBe(400);
+        expect(response.body.path).toBe('/agent/ask');
+    });
+
     test('does not apply expensive endpoint protection to unknown routes', async () => {
         const response = await request(app)
             .post('/unknown')
