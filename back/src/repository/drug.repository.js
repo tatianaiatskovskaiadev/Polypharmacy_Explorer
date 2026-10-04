@@ -18,6 +18,15 @@ export const createDrug = async (drug) => await Drug.create({
     normalizedName: normalizeDrugName(drug.name)
 });
 
+export const upsertFdaAnalogue = async ({name, activeIngredient, guidelines}) => {
+    const normalizedName = normalizeDrugName(name);
+    return Drug.findOneAndUpdate(
+        {normalizedName},
+        {$setOnInsert: {name, normalizedName, activeIngredient, guidelines}},
+        {upsert: true, returnDocument: 'after', runValidators: true}
+    );
+};
+
 export const upsertInternationalDrug = async ({name, activeIngredient, source, sourceUrl, verificationSource, verificationUrl}) => (
     await Drug.findOneAndUpdate(
         {normalizedName: normalizeDrugName(name)},

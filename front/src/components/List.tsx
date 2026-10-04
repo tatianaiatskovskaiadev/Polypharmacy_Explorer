@@ -54,6 +54,11 @@ const List = ({data, isLoading, isError, errorMessage, onAdd} : Props) => {
                             ) : getEvidenceNote(item)}
                         </small>
                     ) : null}
+                    {item.guidelines?.source !== 'FDA' && !item.guidelines?.sourceUrl && (
+                        <small className="block text-gray-600">
+                            Source: {item.guidelines?.source ?? 'Unknown'}.{getEvidenceNote(item)}
+                        </small>
+                    )}
                 </li>
             ))}
         </ul>

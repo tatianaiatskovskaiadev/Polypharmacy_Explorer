@@ -204,9 +204,13 @@ The CSV importer maps:
 - `drugname` to `name`
 - `activeingred` to `activeIngredient`
 
+It skips repeated normalized names within each batch and duplicate-key rows already present in MongoDB, then reports rows read, imported, and skipped. Other write or validation errors stop the import.
+
 ## Database Migrations
 
 Existing databases created before `normalizedName` was introduced must be backfilled before relying on the unique drug-name index.
+
+Drug records without `guidelines.source` now have unknown provenance. Older CSV imports may already have `guidelines.source: "FDA"` stored by the previous schema default, and older administrator submissions were also labeled `FDA`. These changes do not rewrite existing records. Review them before clearing or changing that field, since genuine FDA-backed records must retain their source.
 
 First run a dry run to detect duplicates:
 
@@ -233,7 +237,7 @@ curl -c cookies.txt -X POST http://localhost:3000/auth/register \
 
 The JSON response contains `csrfToken`. Send it as `x-csrf-token` with the saved cookie on subsequent POST requests. New users must follow the verification link before using protected drug endpoints. Existing users can POST `email` and `password` to `/auth/login`; GET `/auth/me` restores the CSRF token after a page reload, and POST `/auth/logout` invalidates the session. The SPA also supports password reset and listing or revoking active sessions. API endpoints are `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/verify`, `POST /auth/resend-verification`, `GET /auth/sessions`, and `DELETE /auth/sessions/:sessionId`. Reset links expire after 30 minutes, verification links after 24 hours, and using a reset link revokes all sessions.
 
-New accounts receive the `user` role. To authorize an existing verified account to submit drug records through `POST /`, set its role to `admin` using a privileged MongoDB connection, for example `db.users.updateOne({email: "person@example.com"}, {$set: {role: "admin"}})`. This endpoint still requires the session cookie and CSRF token. Do not submit unverified text as FDA label content.
+New accounts receive the `user` role. To authorize an existing verified account to submit drug records through `POST /`, set its role to `admin` using a privileged MongoDB connection, for example `db.users.updateOne({email: "person@example.com"}, {$set: {role: "admin"}})`. This endpoint still requires the session cookie and CSRF token. New submissions through this endpoint are stored with `Manual` provenance; new openFDA lookup results are marked `FDA`.
 
 Search and enrich drugs:
 
@@ -353,8 +357,8 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 30 suites, 126 tests (without `OPENAI_API_KEY`) |
-| `cd front && npm test` | Passed: 6 tests |
+| `cd back && npm test` | Passed: 32 suites, 136 tests (without `OPENAI_API_KEY`) |
+| `cd front && npm test` | Passed: 8 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed |
 
@@ -384,7 +388,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - **Drug search merges local and openFDA results.** Search includes local products matching the name or active ingredient and bounded, deduplicated openFDA label matches. If neither source has results, it checks NIH DailyMed and then exact PubChem chemical synonyms. After PubChem resolves an ingredient, openFDA and DailyMed are checked again by ingredient. The identity and label URLs are stored separately. A PubChem-only result is marked as chemical identity, not proof of a medicinal product or interaction. Products sharing an ingredient are search matches, not recommendations for therapeutic substitution.
 - **Interaction evidence keeps provenance.** Cached pairs are returned first; new pairs are checked in openFDA and then NIH DailyMed, and saved with the source name, URL, evidence text, and retrieval time. A pair is not stored unless the second ingredient is explicitly mentioned in an interaction section. Missing evidence is not evidence of safety.
 - **Symptom search has two sources.** Drug matches use vector search over FDA label embeddings; interaction matches use saved AI-normalized pair descriptions and action guidance.
-- **Drug names are normalized before persistence.** A `normalizedName` unique index prevents duplicates caused by casing or extra whitespace.
+- **Drug names are normalized before persistence.** A `normalizedName` unique index prevents duplicates caused by casing or extra whitespace. Concurrent openFDA analogue searches use an upsert on that name so they reuse one record.
 - **Interaction pairs are canonicalized.** The repository stores drug pairs in stable order to avoid duplicate `A+B` and `B+A` records.
 - **Interaction analysis uses bounded concurrency.** Cold-cache pair analysis is parallelized with a small concurrency limit to reduce latency without overwhelming FDA/OpenAI.
 - **Concurrent pair syncs are deduplicated in-process.** Parallel requests for the same canonical pair share one in-flight Promise, avoiding duplicate FDA/OpenAI spend in a single Node process.

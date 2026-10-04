@@ -17,3 +17,18 @@ test('rejects a role supplied during registration', () => {
     expect(response.status).toHaveBeenCalledWith(400);
     expect(next).not.toHaveBeenCalled();
 });
+
+test('rejects a drug source supplied by the caller', () => {
+    const response = {status: jest.fn().mockReturnThis(), json: jest.fn()};
+    const next = jest.fn();
+    validate('createDrug')({
+        body: {
+            name: 'Example', activeIngredient: 'ingredient',
+            originalText: 'Administrator supplied text', source: 'FDA'
+        },
+        path: '/'
+    }, response, next);
+
+    expect(response.status).toHaveBeenCalledWith(400);
+    expect(next).not.toHaveBeenCalled();
+});

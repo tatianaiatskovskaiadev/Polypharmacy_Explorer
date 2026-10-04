@@ -8,7 +8,32 @@ import {normalizeDrugName} from "../middlewares/normalization.js";
 // Errors are propagated to the caller so a failed import is never reported as success.
 export const parseDrugRegistry = async (filePath) => {
     let currentBatch = [];
+    const namesInBatch = new Set();
     let totalRows = 0;
+    let importedRows = 0;
+    let skippedDuplicates = 0;
+
+    const flushBatch = async () => {
+        if (currentBatch.length === 0) return;
+        try {
+            const result = await Drug.insertMany(currentBatch, {
+                ordered: false, rawResult: true, throwOnValidationError: true
+            });
+            importedRows += result.insertedCount;
+        } catch (error) {
+            const writeErrors = error.writeErrors ?? (error.code === 11000 ? [error] : []);
+            if (!Array.isArray(writeErrors) || writeErrors.length === 0 ||
+                writeErrors.some((writeError) => writeError.code !== 11000) ||
+                error.mongoose?.validationErrors?.length || !Array.isArray(error.insertedDocs)) {
+                throw error;
+            }
+            importedRows += error.insertedDocs.length;
+            skippedDuplicates += currentBatch.length - error.insertedDocs.length;
+        }
+        currentBatch = [];
+        namesInBatch.clear();
+        console.log(`[DB] Imported: ${importedRows}; duplicates skipped: ${skippedDuplicates}`);
+    };
 
     const parser = fs.createReadStream(filePath).pipe(csv());
 
@@ -20,20 +45,21 @@ export const parseDrugRegistry = async (filePath) => {
             activeIngredient: row['activeingred'],
         }
 
-        currentBatch.push(mappedRow);
         totalRows++;
+        if (namesInBatch.has(mappedRow.normalizedName)) {
+            skippedDuplicates++;
+            continue;
+        }
+        namesInBatch.add(mappedRow.normalizedName);
+        currentBatch.push(mappedRow);
 
         if (currentBatch.length === ETL_BATCH_SIZE) {
-            await Drug.insertMany(currentBatch, { ordered: false });
-            console.log(`[DB] Rows saved: ${totalRows}`);
-            currentBatch = [];
+            await flushBatch();
         }
     }
 
-    if (currentBatch.length > 0) {
-        await Drug.insertMany(currentBatch, { ordered: false });
-    }
+    await flushBatch();
 
-    return totalRows;
+    return {totalRows, importedRows, skippedDuplicates};
 }
 

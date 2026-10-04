@@ -13,9 +13,9 @@ if (!filePath) {
 try {
     await mongoose.connect(config.mongodb.uri, config.mongodb.db);
     console.time('Import time');
-    const totalRows = await parseDrugRegistry(filePath);
+    const {totalRows, importedRows, skippedDuplicates} = await parseDrugRegistry(filePath);
     console.timeEnd('Import time');
-    console.log(`Imported rows: ${totalRows}`);
+    console.log(`Rows read: ${totalRows}; imported: ${importedRows}; duplicates skipped: ${skippedDuplicates}`);
 } catch (error) {
     console.error('Import failed:', error);
     process.exitCode = 1;

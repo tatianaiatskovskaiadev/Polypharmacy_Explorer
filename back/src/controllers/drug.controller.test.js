@@ -8,6 +8,7 @@ jest.unstable_mockModule('../services/drug.service.js', () => ({
 }));
 
 const {getSimilarDrugs: handleSearch} = await import('./drug.controller.js');
+const {Drug} = await import('../models/Drug.model.js');
 
 test('returns compact search results without full FDA label text', async () => {
     getSimilarDrugs.mockResolvedValueOnce([{
@@ -27,9 +28,9 @@ test('returns compact search results without full FDA label text', async () => {
 });
 
 test('does not claim FDA provenance when the source is missing', async () => {
-    getSimilarDrugs.mockResolvedValueOnce([{
-        _id: 'drug-2', name: 'Unknown drug', activeIngredient: 'unknown'
-    }]);
+    getSimilarDrugs.mockResolvedValueOnce([
+        new Drug({name: 'Unknown drug', activeIngredient: 'unknown'})
+    ]);
     const response = {status: jest.fn().mockReturnThis(), json: jest.fn()};
 
     await handleSearch({body: {text: 'unknown'}}, response);

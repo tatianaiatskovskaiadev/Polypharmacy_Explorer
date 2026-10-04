@@ -10,6 +10,7 @@ const findDailyMedDrug = jest.fn();
 const resolveIngredientFromPubChem = jest.fn();
 const indexFdaPassages = jest.fn();
 const createDrug = jest.fn();
+const upsertFdaAnalogue = jest.fn();
 const upsertInternationalDrug = jest.fn();
 const getDrugsByIds = jest.fn();
 const getDrugByName = jest.fn();
@@ -34,6 +35,7 @@ jest.unstable_mockModule('./fda-passage.service.js', () => ({indexFdaPassages}))
 
 jest.unstable_mockModule('../repository/drug.repository.js', () => ({
     createDrug,
+    upsertFdaAnalogue,
     upsertInternationalDrug,
     getDrug,
     getDrugsByIds,
@@ -50,7 +52,7 @@ jest.unstable_mockModule('../repository/interaction.repository.js', () => ({
     searchInteractionsByText
 }));
 
-const {getSimilarDrugs, searchDrugsBySymptom} = await import('./drug.service.js');
+const {createDrug: createDrugFromRequest, getSimilarDrugs, searchDrugsBySymptom} = await import('./drug.service.js');
 
 const contentHash = (text) => createHash('sha256').update(text).digest('hex');
 
@@ -62,6 +64,7 @@ describe('drug service', () => {
         resolveIngredientFromPubChem.mockReset().mockResolvedValue(null);
         indexFdaPassages.mockReset();
         createDrug.mockReset();
+        upsertFdaAnalogue.mockReset().mockImplementation(async (drug) => ({...drug, _id: drug.name}));
         upsertInternationalDrug.mockReset();
         getDrug.mockReset();
         getDrugsByIds.mockReset();
@@ -70,6 +73,25 @@ describe('drug service', () => {
         saveSearchResult.mockReset();
         searchInteractionsByText.mockReset();
         updateDrug.mockReset();
+    });
+
+    test('stores administrator supplied text as Manual even if a source is supplied', async () => {
+        createVector.mockResolvedValueOnce([0.1, 0.2]);
+        createDrug.mockImplementationOnce(async (drug) => drug);
+
+        await createDrugFromRequest({
+            name: 'Example', activeIngredient: 'ingredient',
+            originalText: 'Administrator supplied text', source: 'FDA'
+        });
+
+        expect(createDrug).toHaveBeenCalledWith(expect.objectContaining({
+            guidelines: expect.objectContaining({
+                source: 'Manual',
+                originalText: 'Administrator supplied text',
+                contentHash: contentHash('Administrator supplied text'),
+                embedding: [0.1, 0.2]
+            })
+        }));
     });
 
     test('returns local drugs when FDA analogue search has no results', async () => {
@@ -128,7 +150,7 @@ describe('drug service', () => {
         });
         upsertInternationalDrug.mockResolvedValueOnce(alias);
         createVector.mockResolvedValueOnce([0.1]);
-        createDrug.mockResolvedValueOnce(analogue);
+        upsertFdaAnalogue.mockImplementationOnce(async (drug) => ({...drug, _id: analogue._id}));
 
         const result = await getSimilarDrugs('Dimedrol');
 
@@ -140,8 +162,8 @@ describe('drug service', () => {
             source: 'PubChem (NIH)',
             verificationSource: 'openFDA'
         }));
-        expect(result).toEqual([alias, analogue]);
-        expect(saveSearchResult).toHaveBeenCalledWith('dimedrol', [alias, analogue]);
+        expect(result).toMatchObject([alias, analogue]);
+        expect(saveSearchResult).toHaveBeenCalledWith('dimedrol', result);
     });
 
     test('saves a PubChem-only chemical identity without presenting it as label evidence', async () => {
@@ -191,10 +213,10 @@ describe('drug service', () => {
         const analogue = {_id: 'analogue-1', name: 'Valid label', activeIngredient};
         upsertInternationalDrug.mockResolvedValueOnce(alias);
         createVector.mockResolvedValueOnce([0.1]);
-        createDrug.mockResolvedValueOnce(analogue);
+        upsertFdaAnalogue.mockImplementationOnce(async (drug) => ({...drug, _id: analogue._id}));
 
-        await expect(getSimilarDrugs('Dimedrol')).resolves.toEqual([alias, analogue]);
-        expect(createDrug).toHaveBeenCalledTimes(1);
+        await expect(getSimilarDrugs('Dimedrol')).resolves.toMatchObject([alias, analogue]);
+        expect(upsertFdaAnalogue).toHaveBeenCalledTimes(1);
     });
 
     test('uses a DailyMed ingredient label when FDA has no matching label', async () => {
@@ -398,13 +420,60 @@ describe('drug service', () => {
             {openfda: {brand_name: ['COUMADIN'], generic_name: ['WARFARIN SODIUM']}, warnings: ['label text']}
         ]);
         createVector.mockResolvedValueOnce([0.1]);
-        createDrug.mockResolvedValueOnce(coumadin);
+        upsertFdaAnalogue.mockImplementationOnce(async (drug) => ({...drug, _id: coumadin._id}));
 
         const result = await getSimilarDrugs('warfarin');
 
         expect(result.map((drug) => drug.name)).toEqual(['WARFARIN SODIUM', 'COUMADIN']);
-        expect(createDrug).toHaveBeenCalledTimes(1);
+        expect(upsertFdaAnalogue).toHaveBeenCalledTimes(1);
         expect(saveSearchResult).toHaveBeenCalledWith('warfarin', result);
+    });
+
+    test('uses the same upserted analogue for concurrent searches', async () => {
+        const label = {
+            openfda: {brand_name: ['Ibuprofen'], generic_name: ['IBUPROFEN']},
+            warnings: ['FDA warning']
+        };
+        getDrugByName.mockResolvedValue([]);
+        fetchAnaloguesFromFDA.mockResolvedValue([label]);
+        createVector.mockResolvedValue([0.1]);
+        let storedDrug;
+        upsertFdaAnalogue.mockImplementation(async (drug) => {
+            storedDrug ??= {...drug, _id: 'shared-drug'};
+            return storedDrug;
+        });
+
+        const [firstResults, secondResults] = await Promise.all([
+            getSimilarDrugs('ibuprofen'), getSimilarDrugs('ibuprofen')
+        ]);
+
+        expect(firstResults[0]._id).toBe('shared-drug');
+        expect(secondResults[0]._id).toBe('shared-drug');
+        expect(upsertFdaAnalogue).toHaveBeenCalledTimes(2);
+        expect(createDrug).not.toHaveBeenCalled();
+    });
+
+    test('refreshes a different record returned by the FDA upsert', async () => {
+        const existingDrug = {
+            _id: 'drug-1', name: 'Ibuprofen', activeIngredient: 'old ingredient',
+            guidelines: {source: 'Manual'}
+        };
+        getDrugByName.mockResolvedValue([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([{
+            openfda: {brand_name: ['Ibuprofen'], generic_name: ['IBUPROFEN']},
+            warnings: ['FDA warning']
+        }]);
+        createVector.mockResolvedValueOnce([0.1]);
+        upsertFdaAnalogue.mockResolvedValueOnce(existingDrug);
+        updateDrug.mockImplementationOnce(async (_id, data) => ({...existingDrug, ...data}));
+
+        const result = await getSimilarDrugs('ibuprofen');
+
+        expect(updateDrug).toHaveBeenCalledWith('drug-1', expect.objectContaining({
+            activeIngredient: 'IBUPROFEN',
+            guidelines: expect.objectContaining({source: 'FDA', originalText: 'FDA warning'})
+        }));
+        expect(result[0].guidelines.source).toBe('FDA');
     });
 
     test('saves at most twelve distinct FDA analogues', async () => {
@@ -417,12 +486,10 @@ describe('drug service', () => {
             warnings: [`FDA warning ${index}`]
         })));
         createVector.mockResolvedValue([0.1]);
-        createDrug.mockImplementation(async (drug) => ({...drug, _id: drug.name}));
-
         const result = await getSimilarDrugs('warfarin');
 
         expect(result).toHaveLength(12);
-        expect(createDrug).toHaveBeenCalledTimes(12);
+        expect(upsertFdaAnalogue).toHaveBeenCalledTimes(12);
     });
 
     test('does not present combination products as an exact ingredient result', async () => {
@@ -446,8 +513,6 @@ describe('drug service', () => {
         createVector
             .mockResolvedValueOnce([0.1])
             .mockResolvedValueOnce([0.2]);
-        createDrug.mockImplementation(async (drug) => drug);
-
         const result = await getSimilarDrugs('metformin');
 
         expect(result.map((drug) => drug.name)).toEqual(['METFORMIN HYDROCHLORIDE']);
@@ -467,10 +532,9 @@ describe('drug service', () => {
             }
         ]);
         createVector.mockResolvedValueOnce([0.1, 0.2, 0.3]);
-        createDrug.mockResolvedValueOnce({name: 'TestDrug'});
-
-        await expect(getSimilarDrugs('TestDrug')).resolves.toEqual([{name: 'TestDrug'}]);
-        expect(createDrug).toHaveBeenCalledWith(expect.objectContaining({
+        const result = await getSimilarDrugs('TestDrug');
+        expect(result).toMatchObject([{name: 'TestDrug'}]);
+        expect(upsertFdaAnalogue).toHaveBeenCalledWith(expect.objectContaining({
             name: 'TestDrug',
             activeIngredient: 'test ingredient',
             guidelines: expect.objectContaining({
@@ -480,7 +544,7 @@ describe('drug service', () => {
                 embedding: [0.1, 0.2, 0.3]
             })
         }));
-        expect(saveSearchResult).toHaveBeenCalledWith('testdrug', [{name: 'TestDrug'}]);
+        expect(saveSearchResult).toHaveBeenCalledWith('testdrug', result);
     });
 
     test('limits long FDA label text before creating an embedding', async () => {
@@ -498,8 +562,6 @@ describe('drug service', () => {
             }
         ]);
         createVector.mockResolvedValueOnce([0.1]);
-        createDrug.mockResolvedValueOnce({name: 'LongLabelDrug'});
-
         await getSimilarDrugs('LongLabelDrug');
 
         expect(createVector).toHaveBeenCalledWith(expect.any(String));

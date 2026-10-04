@@ -168,8 +168,8 @@ const mergeRankedDrugResults = (primaryDrugs, secondaryDrugs, searchText) => {
     return rankLocalDrugs([...byNormalizedName.values()], searchText);
 };
 
-const buildGuidelines = (originalText, embedding, sourceUrl) => ({
-    source: 'FDA',
+const buildGuidelines = (originalText, embedding, source, sourceUrl) => ({
+    source,
     ...(sourceUrl ? {sourceUrl} : {}),
     originalText,
     contentHash: originalText ? createContentHash(originalText) : undefined,
@@ -188,7 +188,7 @@ export const createDrug = async (drug) => {
     const data = {
         name,
         activeIngredient,
-        guidelines: buildGuidelines(originalText, embedding)
+        guidelines: buildGuidelines(originalText, embedding, 'Manual')
     };
 
     return await drugRepository.createDrug(data);
@@ -279,7 +279,7 @@ const saveFdaAnalogue = async (item, text) => {
             const embedding = await createVector(embeddingText);
             drugFromDb = await drugRepository.updateDrug(drugFromDb._id, {
                 activeIngredient: itemIngredient || drugFromDb.activeIngredient,
-                guidelines: buildGuidelines(embeddingText, embedding, getFdaLabelUrl(item, itemIngredient))
+                guidelines: buildGuidelines(embeddingText, embedding, 'FDA', getFdaLabelUrl(item, itemIngredient))
             });
 
             if (!drugFromDb) throw new Error(`Drug not found after update: ${name}`);
@@ -290,11 +290,19 @@ const saveFdaAnalogue = async (item, text) => {
     }
 
     const embedding = await createVector(embeddingText);
-    const savedDrug = await drugRepository.createDrug({
+    let savedDrug = await drugRepository.upsertFdaAnalogue({
         name,
         activeIngredient: itemIngredient,
-        guidelines: buildGuidelines(embeddingText, embedding, getFdaLabelUrl(item, itemIngredient))
+        guidelines: buildGuidelines(embeddingText, embedding, 'FDA', getFdaLabelUrl(item, itemIngredient))
     });
+
+    if (!hasReusableGuidelines(savedDrug, embeddingText)) {
+        savedDrug = await drugRepository.updateDrug(savedDrug._id, {
+            activeIngredient: itemIngredient,
+            guidelines: buildGuidelines(embeddingText, embedding, 'FDA', getFdaLabelUrl(item, itemIngredient))
+        });
+        if (!savedDrug) throw new Error(`Drug not found after update: ${name}`);
+    }
 
     await indexFdaPassages(item, savedDrug._id, savedDrug.name);
     return savedDrug;

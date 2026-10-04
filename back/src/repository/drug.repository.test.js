@@ -20,6 +20,7 @@ const {
     createDrug,
     getDrugByName,
     getDrugsByIds,
+    upsertFdaAnalogue,
     upsertInternationalDrug,
     updateDrug
 } = await import('./drug.repository.js');
@@ -63,6 +64,23 @@ describe('drug repository', () => {
                 activeIngredient: 'chloropyramine',
                 guidelines: {source: 'Hungarian drug database', sourceUrl: 'https://example.com/source'}
             })},
+            {upsert: true, returnDocument: 'after', runValidators: true}
+        );
+    });
+
+    test('upserts an FDA analogue by its unique normalized name', async () => {
+        const drug = {
+            name: '  Diphenhydramine HCl  ',
+            activeIngredient: 'diphenhydramine',
+            guidelines: {source: 'FDA', originalText: 'FDA warning'}
+        };
+        findOneAndUpdate.mockResolvedValueOnce(drug);
+
+        await expect(upsertFdaAnalogue(drug)).resolves.toBe(drug);
+
+        expect(findOneAndUpdate).toHaveBeenCalledWith(
+            {normalizedName: 'diphenhydramine hcl'},
+            {$setOnInsert: {...drug, normalizedName: 'diphenhydramine hcl'}},
             {upsert: true, returnDocument: 'after', runValidators: true}
         );
     });

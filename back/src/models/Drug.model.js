@@ -7,7 +7,7 @@ const drugSchema = new Schema({
     activeIngredient: { type: String, required: true },
 
     guidelines: {
-        source: { type: String, default: 'FDA' },
+        source: { type: String },
         sourceUrl: {type: String},
         verificationSource: {type: String},
         verificationUrl: {type: String},

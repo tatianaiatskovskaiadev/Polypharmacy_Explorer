@@ -28,3 +28,17 @@ test('shows an empty result state', () => {
     render(<List data={[]} isLoading={false} isError={false} onAdd={vi.fn()}/>);
     expect(screen.getByText('No drugs found.')).toBeTruthy();
 });
+
+test('labels a drug without verified provenance as unknown', () => {
+    render(<List data={[{...drug, guidelines: {source: 'Unknown'}}]}
+                 isLoading={false} isError={false} onAdd={vi.fn()}/>);
+
+    expect(screen.getByText('Source: Unknown. FDA label evidence is unavailable.')).toBeTruthy();
+});
+
+test('labels an administrator supplied drug as Manual', () => {
+    render(<List data={[{...drug, guidelines: {source: 'Manual'}}]}
+                 isLoading={false} isError={false} onAdd={vi.fn()}/>);
+
+    expect(screen.getByText('Source: Manual. FDA label evidence is unavailable.')).toBeTruthy();
+});
