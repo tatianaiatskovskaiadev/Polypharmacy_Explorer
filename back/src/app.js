@@ -10,6 +10,7 @@ import agentRoutes from './routes/agent.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import {protectAuthEndpoint, protectExpensiveEndpoint} from "./middlewares/cost-control.middleware.js";
 import {requireAllowedOrigin, requireAuth, requireCsrf, requireVerifiedEmail} from './middlewares/auth.middleware.js';
+import {requestLogging} from './middlewares/request-logging.middleware.js';
 
 const app = express();
 
@@ -23,6 +24,7 @@ const EXPENSIVE_ENDPOINTS = [
     '/agent/ask'
 ];
 
+app.use(requestLogging);
 app.use(cors(corsOptions));
 
 app.use(express.json({limit: '100kb'}));

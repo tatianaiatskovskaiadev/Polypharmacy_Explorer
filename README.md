@@ -388,7 +388,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - Backend is JavaScript while frontend is TypeScript; backend TypeScript migration is a future improvement.
 - AWS deployment is not implemented in this repository; production email delivery requires external SMTP configuration.
 - The registration code is shared until rotated, and email delivery is not queued or retried after a provider outage.
-- Structured logging, request IDs, and metrics are not fully implemented yet.
+- API requests have generated IDs and JSON completion/error logs without URLs, query strings, bodies, or headers. Service-level logs, metrics, and tracing are not fully implemented yet.
 - Docker Compose is not included yet.
 - CI exists for backend tests and frontend build/lint, but deployment/CD and Docker image build checks are not configured yet.
 - Frontend UX covers removal, loading, common API errors, and partial interaction failure details, but still needs richer empty states, per-pair progress, and more polished interaction details.
@@ -403,7 +403,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 
 1. Harden account delivery with one-time invitations, reliable email delivery, and a deployment-ready domain and proxy configuration.
 2. Strengthen evidence presentation and evaluation. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; test insufficient-evidence behavior and citation quality against a fixed set of example questions.
-3. Improve reliability and observability. Add request IDs, structured logs with sensitive-data redaction, and request/cost metrics. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
+3. Improve reliability and observability. Extend structured logging to service failures and add request/cost metrics. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
 4. Add frontend regression tests and polish the graph layout, empty states, per-pair progress, and interaction details. Fix the graph's viewport-sized container within the page layout.
 5. Define AWS infrastructure as code for S3, CloudFront, Route 53, an API runtime, TLS, secrets, and monitoring. Extend GitHub Actions with Docker build, staging deployment, and post-deployment checks.
 6. Add a local multi-service setup and consider backend TypeScript migration and `/api/v1` versioning after the API contract stabilizes.
