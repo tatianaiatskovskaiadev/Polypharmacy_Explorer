@@ -2,7 +2,9 @@
 
 Polypharmacy Explorer is a full-stack health-adjacent portfolio project for exploring potential drug interactions as an interactive graph.
 
-The app combines local drug registry data, openFDA label data, MongoDB vector search, and AI-assisted normalization of interaction text. It is built as a developer demo and decision-support prototype, not as a medical device or source of medical advice.
+The app combines local drug registry data, openFDA and NIH DailyMed labels, exact PubChem chemical synonym resolution,
+MongoDB vector search, and AI-assisted normalization of interaction text. It is built as a developer demo and
+decision-support prototype, not as a medical device or source of medical advice.
 
 ## Problem
 
@@ -18,8 +20,8 @@ This project turns that workflow into an interactive graph:
 
 ## Features
 
-- Drug search through local MongoDB data and openFDA label enrichment.
-- Source-linked discovery through openFDA, NIH DailyMed, and exact PubChem chemical synonyms; no per-drug catalog is hardcoded.
+- Drug search through local MongoDB data, then openFDA, NIH DailyMed, and exact PubChem chemical synonyms.
+- Source-linked discovery with separate identity and verification URLs; no per-drug catalog is hardcoded.
 - Interaction graph built with React Flow and Dagre layout.
 - Graph warning that missing edges mean unavailable/absent data, not proven safety.
 - Normalized unique drug names to reduce duplicate records from casing and whitespace differences.
@@ -41,6 +43,8 @@ flowchart LR
     UI[React + TypeScript UI] --> API[Express API]
     API --> Mongo[(MongoDB / Atlas)]
     API --> FDA[openFDA Drug Label API]
+    API --> DailyMed[NIH DailyMed]
+    API --> PubChem[PubChem PUG]
     API --> OpenAI[OpenAI Embeddings + Chat]
     Mongo --> Graph[Cached Drugs + Interactions]
     FDA --> Passages[FDA Label Passages]
@@ -58,21 +62,21 @@ Backend structure:
 
 - `routes` define API endpoints.
 - `controllers` keep HTTP request/response handling thin.
-- `services` contain FDA, AI, interaction, and drug workflows.
+- `services` contain FDA, DailyMed, PubChem, AI, interaction, RAG, agent, and drug workflows.
 - `repository` isolates MongoDB queries and canonical pair persistence.
 - `models` define Mongoose schemas and indexes.
 - `middlewares` handle validation and normalized errors.
 
 ## Tech Stack
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | React 19, TypeScript, Redux Toolkit Query, React Flow, Tailwind CSS, Vite |
-| Backend | Node.js, Express 5, Mongoose, Joi |
-| Data | MongoDB, MongoDB Atlas Vector Search |
-| AI / External APIs | OpenAI API, openFDA Drug Label API |
-| Testing | Jest, Supertest |
-| Packaging | Backend Dockerfile |
+| Layer              | Technology                                                                |
+|--------------------|---------------------------------------------------------------------------|
+| Frontend           | React 19, TypeScript, Redux Toolkit Query, React Flow, Tailwind CSS, Vite |
+| Backend            | Node.js, Express 5, Mongoose, Joi                                         |
+| Data               | MongoDB, MongoDB Atlas Vector Search                                      |
+| AI / External APIs | OpenAI API, openFDA Drug Label API, NIH DailyMed, PubChem PUG             |
+| Testing            | Jest, Supertest                                                           |
+| Packaging          | Backend Dockerfile                                                        |
 
 ## Requirements
 
@@ -97,9 +101,18 @@ The `/rag/answer` endpoint also requires a second Atlas Vector Search index on t
 
 Searching for a drug through `/search` now indexes its openFDA label passages. Re-search previously saved drugs to populate the new collection before asking questions about them. Label passages without an openFDA record ID are skipped because they cannot be linked to a specific source record. Passage embeddings are reused when the source text and embedding model have not changed.
 
-Successful FDA-enriched drug searches are cached in MongoDB for 24 hours. Repeating the same query returns the saved result set without another openFDA request or passage reindexing. Searches that fall back to local results when FDA returns no labels are cached for five minutes, avoiding repeated waits during a temporary FDA outage. The UI also reuses its query cache during the current session. After expiry, the next search refreshes FDA data and any changed passages.
+Successful drug searches are cached in MongoDB for 24 hours. Repeating the same query returns the saved result set
+without another openFDA, DailyMed, or PubChem request or passage reindexing. Empty fallback searches are cached for five
+minutes, avoiding repeated waits during a temporary external outage. The UI also reuses its query cache during the
+current session. After expiry, the next search refreshes external data and any changed passages.
 
-Some medicines are absent from both the imported registry and openFDA. Exact searches for `tibolone`, `suprastin`, or `chloropyramine` use a small source-linked international catalog and save the selected drug in MongoDB. These entries show their regulator source in the search list. They have no FDA label passages in this project, so RAG and agent answers must report insufficient FDA evidence rather than inventing an interaction. Additional international medicines require an explicit, verified source entry.
+When a name is missing from both the imported registry and openFDA, search continues to NIH DailyMed and then exact
+PubChem chemical synonyms. After PubChem resolves an active ingredient, openFDA and DailyMed are checked again by that
+ingredient. Verified label URLs are stored separately from the chemical identity URL. A PubChem-only hit is marked as
+chemical identity, not proof of a medicinal product or interaction; examples such as `tibolone`, `suprastin`, or
+`Dimedrol` follow this general path rather than a hardcoded catalog. Those entries have no FDA label passages unless a
+matching openFDA label is found later, so RAG and agent answers must report insufficient FDA evidence rather than
+inventing an interaction.
 
 ## Environment
 
@@ -226,7 +239,9 @@ Response shape:
 }
 ```
 
-`failedPairs` is populated when one pair cannot be synced from FDA/OpenAI during a partial interaction check. The API still returns cached and successfully completed interactions, and the UI lists failed pair names with reasons.
+`failedPairs` is populated when one pair cannot be synced from openFDA, DailyMed, or OpenAI during a partial interaction
+check. The API still returns cached and successfully completed interactions, and the UI lists failed pair names with
+reasons.
 
 Highlight selected drugs by symptom or risk phrase:
 
@@ -291,12 +306,15 @@ Current backend test coverage focuses on:
 - canonical interaction pair storage
 - Express app importability without starting the server
 - fallback behavior when openFDA returns no drug labels
+- DailyMed identity and interaction fallbacks
+- exact PubChem synonym resolution without a hardcoded catalog
 - long FDA label truncation before OpenAI embeddings
 - OpenAI and FDA external error mapping
 - bounded interaction sync concurrency
 - in-flight deduplication for concurrent interaction pair syncs
 - demo API key and rate-limit protection for costly endpoints
 - normalized drug name duplicate protection
+- FDA-grounded RAG and tool-calling agent citation gates
 
 Latest local validation:
 
@@ -353,6 +371,8 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - Frontend UX covers removal, loading, common API errors, and partial interaction failure details, but still needs richer empty states, per-pair progress, and more polished interaction details.
 - MongoDB Atlas Vector Search index setup must be configured outside the repository.
 - RAG only covers FDA labels indexed through drug search; older cached drugs need to be searched again. Passage indexing is capped per label, so long labels may have incomplete coverage.
+- PubChem-only chemical identities and DailyMed-only entries do not create FDA passages, so RAG and agent answers
+  correctly report insufficient FDA evidence for those drugs.
 - In-flight interaction deduplication is per Node process; multi-instance deployments need a distributed lock or persistent pending status.
 - Existing MongoDB collections created before `normalizedName` still require the documented one-time backfill before deployment.
 
