@@ -7,7 +7,17 @@ export const createDrug = async (req, res) => {
 
 export const getSimilarDrugs = async (req, res) => {
     const data = await drugService.getSimilarDrugs(req.body.text);
-    return res.status(200).json(data);
+    return res.status(200).json(data.map((drug) => ({
+        _id: drug._id,
+        name: drug.name,
+        activeIngredient: drug.activeIngredient,
+        guidelines: {
+            source: drug.guidelines?.source ?? 'FDA',
+            sourceUrl: drug.guidelines?.sourceUrl,
+            verificationSource: drug.guidelines?.verificationSource,
+            verificationUrl: drug.guidelines?.verificationUrl
+        }
+    })));
 }
 
 export const getDrugsBySymptom = async (req, res) => {

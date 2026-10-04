@@ -3,7 +3,7 @@ import {beforeEach, describe, expect, jest, test} from '@jest/globals';
 const fetchMock = jest.fn();
 global.fetch = fetchMock;
 
-const {fetchRawInteraction} = await import('./fda.service.js');
+const {fetchAnaloguesFromFDA, fetchRawInteraction} = await import('./fda.service.js');
 
 const createResponse = (body, status = 200) => ({
     status,
@@ -38,5 +38,13 @@ describe('fda service', () => {
         const requestedUrls = fetchMock.mock.calls.map(([url]) => decodeURIComponent(url));
         expect(requestedUrls[0]).toContain('drug_interactions:"WARFARIN SODIUM"');
         expect(requestedUrls[1]).toContain('drug_interactions:"WARFARIN"');
+    });
+
+    test('fetches enough ingredient labels to discover distinct product names', async () => {
+        fetchMock.mockResolvedValueOnce(createResponse({results: []}));
+
+        await expect(fetchAnaloguesFromFDA('warfarin')).resolves.toEqual([]);
+
+        expect(fetchMock.mock.calls[0][0]).toContain('limit=100');
     });
 });

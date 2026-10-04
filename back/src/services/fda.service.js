@@ -115,7 +115,7 @@ export const fetchAnaloguesFromFDA = async (activeIngredient) => {
             ingredients.map(ingredient =>
                 fetchLabels(
                     `openfda.generic_name:${quote(ingredient)} OR openfda.brand_name:${quote(ingredient)}`,
-                    5
+                    100
                 )
             )
         );

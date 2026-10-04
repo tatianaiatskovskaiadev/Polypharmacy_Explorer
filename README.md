@@ -78,7 +78,7 @@ The Vite SPA is designed for static hosting on S3 behind CloudFront, with Route 
 | Backend            | Node.js, Express 5, Mongoose, Joi                                         |
 | Data               | MongoDB, MongoDB Atlas Vector Search                                      |
 | AI / External APIs | OpenAI API, openFDA Drug Label API, NIH DailyMed, PubChem PUG             |
-| Testing            | Jest, Supertest                                                           |
+| Testing            | Jest, Supertest, Node test runner, Vitest, Testing Library                |
 | Packaging          | Backend Dockerfile                                                        |
 
 ## Requirements
@@ -104,7 +104,7 @@ The `/rag/answer` endpoint also requires a second Atlas Vector Search index on t
 
 Searching for a drug through `/search` now indexes its openFDA label passages. Re-search previously saved drugs to populate the new collection before asking questions about them. Label passages without an openFDA record ID are skipped because they cannot be linked to a specific source record. Passage embeddings are reused when the source text and embedding model have not changed.
 
-Successful drug searches are cached in MongoDB for 24 hours. Repeating the same query returns the saved result set
+Successful drug searches are cached in MongoDB for 24 hours; local-only results are cached for five minutes so openFDA can be retried. Repeating the same query returns the saved result set
 without another openFDA, DailyMed, or PubChem request or passage reindexing. Empty fallback searches are cached for five
 minutes, avoiding repeated waits during a temporary external outage. The UI also reuses its query cache during the
 current session. After expiry, the next search refreshes external data and any changed passages.
@@ -242,6 +242,8 @@ curl -X POST http://localhost:3000/search \
   -d "{\"text\":\"ibuprofen\"}"
 ```
 
+`/search` returns one result per normalized drug name and only the fields needed by the UI. If older database rows contain duplicates, the result with the strongest available label evidence is selected; full FDA label text stays on the server. This does not delete duplicate MongoDB records.
+
 Check interactions for selected drugs:
 
 ```bash
@@ -321,7 +323,7 @@ cd back
 npm test
 ```
 
-Run frontend layout and evidence utility tests:
+Run frontend utility and component tests:
 
 ```bash
 cd front
@@ -349,8 +351,8 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 26 suites, 110 tests |
-| `cd front && npm test` | Passed: 3 tests |
+| `cd back && npm test` | Passed: 27 suites, 117 tests |
+| `cd front && npm test` | Passed: 6 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed |
 
@@ -377,7 +379,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 
 - **AI output is treated as untrusted input.** The backend validates normalized interaction data with Joi before it can be stored.
 - **Interaction severity analysis is versioned.** New interaction records store the AI rubric version, and stale cached records are reanalyzed with pair-specific context while falling back to cached data if external services fail.
-- **Source lookup stops at the first available source.** Drug search uses the local database first, then openFDA, then NIH DailyMed, then exact PubChem chemical synonyms. After PubChem resolves an ingredient, openFDA and DailyMed are checked again by ingredient. The identity and label URLs are stored separately. A PubChem-only result is marked as chemical identity, not proof of a medicinal product or interaction.
+- **Drug search merges local and openFDA results.** Search includes local products matching the name or active ingredient and bounded, deduplicated openFDA label matches. If neither source has results, it checks NIH DailyMed and then exact PubChem chemical synonyms. After PubChem resolves an ingredient, openFDA and DailyMed are checked again by ingredient. The identity and label URLs are stored separately. A PubChem-only result is marked as chemical identity, not proof of a medicinal product or interaction. Products sharing an ingredient are search matches, not recommendations for therapeutic substitution.
 - **Interaction evidence keeps provenance.** Cached pairs are returned first; new pairs are checked in openFDA and then NIH DailyMed, and saved with the source name, URL, evidence text, and retrieval time. A pair is not stored unless the second ingredient is explicitly mentioned in an interaction section. Missing evidence is not evidence of safety.
 - **Symptom search has two sources.** Drug matches use vector search over FDA label embeddings; interaction matches use saved AI-normalized pair descriptions and action guidance.
 - **Drug names are normalized before persistence.** A `normalizedName` unique index prevents duplicates caused by casing or extra whitespace.
@@ -400,13 +402,13 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - API requests have generated IDs and JSON completion/error logs without URLs, query strings, bodies, or headers. Service-level logs, metrics, and tracing are not fully implemented yet.
 - Docker Compose is not included yet.
 - CI exists for backend tests and frontend build/lint, but deployment/CD and Docker image build checks are not configured yet.
-- Frontend UX covers removal, loading, common API errors, partial interaction failure details, and an in-page graph container, but still needs more component-level tests, richer empty states, per-pair progress, and more polished interaction details.
+- Frontend UX covers removal, loading, common API errors, partial interaction failure details, and an in-page graph container. Search/add/remove component flows have regression tests; richer empty states, per-pair progress, and interaction details still need work.
 - MongoDB Atlas Vector Search index setup must be configured outside the repository.
 - RAG only covers FDA labels indexed through drug search; older cached drugs need to be searched again. Passage indexing is capped per label, so long labels may have incomplete coverage.
 - PubChem-only chemical identities and DailyMed-only entries do not create FDA passages, so RAG and agent answers
   correctly report insufficient FDA evidence for those drugs.
 - In-flight interaction deduplication is per Node process; multi-instance deployments need a distributed lock or persistent pending status.
-- Existing MongoDB collections created before `normalizedName` still require the documented one-time backfill before deployment.
+- Existing MongoDB collections created before `normalizedName` can still contain duplicate records. Search hides duplicates, but the documented one-time backfill and manual duplicate resolution remain necessary before creating the unique index.
 
 ## Roadmap
 

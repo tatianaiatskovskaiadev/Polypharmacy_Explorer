@@ -75,18 +75,20 @@ describe('drug repository', () => {
         expect(find).toHaveBeenCalledWith({
             $or: [
                 {normalizedName: 'ibuprofen sodium'},
-                {name: {$regex: 'IBUPROFEN   Sodium', $options: 'i'}}
+                {name: {$regex: 'IBUPROFEN   Sodium', $options: 'i'}},
+                {activeIngredient: {$regex: 'IBUPROFEN   Sodium', $options: 'i'}}
             ]
         });
     });
 
-    test('excludes stored embeddings from search lists', async () => {
+    test('loads only summary fields for search lists', async () => {
         const select = jest.fn().mockResolvedValueOnce([]);
         find.mockReturnValueOnce({select});
 
-        await getDrugByName('warfarin', {excludeEmbedding: true});
+        await getDrugByName('warfarin', {searchSummary: true});
 
-        expect(select).toHaveBeenCalledWith('-guidelines.embedding');
+        expect(select).toHaveBeenCalledWith(expect.stringContaining('guidelines.contentHash'));
+        expect(select.mock.calls[0][0]).not.toContain('guidelines.originalText');
     });
 
     test('excludes stored embeddings when loading cached results', async () => {
@@ -96,6 +98,16 @@ describe('drug repository', () => {
         await getDrugsByIds(['drug-1']);
 
         expect(select).toHaveBeenCalledWith('-guidelines.embedding');
+    });
+
+    test('loads compact cached search summaries', async () => {
+        const select = jest.fn().mockResolvedValueOnce([]);
+        find.mockReturnValueOnce({select});
+
+        await getDrugsByIds(['drug-1'], {searchSummary: true});
+
+        expect(select).toHaveBeenCalledWith(expect.stringContaining('guidelines.sourceUrl'));
+        expect(select.mock.calls[0][0]).not.toContain('guidelines.originalText');
     });
 
     test('updates normalizedName when display name changes', async () => {

@@ -113,8 +113,10 @@ const SearchPanel = () => {
 
     return (
         <div className={'m-6'}>
-            <label>Drugs:
+            <div>
+                <label htmlFor="drug-search">Drugs:</label>
                 <input
+                    id="drug-search"
                     className={'border border-gray-300 rounded-md p-2 m-2'}
                     type="text"
                     value={searchTerm}
@@ -132,9 +134,11 @@ const SearchPanel = () => {
                     }}
                 >{isLoading ? 'Searching...' : 'Search'}
                 </button>
-            </label>
-            <label>Symptoms:
+            </div>
+            <div>
+                <label htmlFor="symptom-search">Symptoms:</label>
                 <input
+                    id="symptom-search"
                     className={'border border-gray-300 rounded-md p-2 m-2'}
                     type="text"
                     value={symptomText}
@@ -153,7 +157,7 @@ const SearchPanel = () => {
                     }}
                 >{isLoadingSymptoms ? 'Checking...' : 'Search'}
                 </button>
-            </label>
+            </div>
             <List
                 data={searchResults}
                 onAdd={handleAddDrug}
@@ -166,6 +170,7 @@ const SearchPanel = () => {
                     {activeDrugs.map((drug) => (
                         <button
                             key={drug._id}
+                            aria-label={`Remove ${drug.name}`}
                             className="border border-gray-300 rounded-md px-2 py-1 text-sm hover:bg-gray-50"
                             onClick={() => handleRemoveDrug(drug._id)}
                             type="button"

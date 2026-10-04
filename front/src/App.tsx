@@ -1,4 +1,3 @@
-import './App.css'
 import AuthGate from "./components/AuthGate.tsx";
 
 function App() {

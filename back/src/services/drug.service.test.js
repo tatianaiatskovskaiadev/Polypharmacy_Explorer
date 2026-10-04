@@ -84,8 +84,10 @@ describe('drug service', () => {
         await expect(getSimilarDrugs('aspirin')).resolves.toEqual([localDrug]);
         expect(createVector).not.toHaveBeenCalled();
         expect(createDrug).not.toHaveBeenCalled();
-        expect(saveSearchResult).toHaveBeenCalledWith('aspirin', [localDrug]);
-        expect(fetchAnaloguesFromFDA).not.toHaveBeenCalled();
+        expect(saveSearchResult).toHaveBeenCalledWith(
+            'aspirin', [localDrug], DRUG_SEARCH_FALLBACK_CACHE_TTL_MS
+        );
+        expect(fetchAnaloguesFromFDA).toHaveBeenCalledWith('aspirin');
     });
 
     test('stores a DailyMed drug with its source when FDA has no label', async () => {
@@ -210,10 +212,40 @@ describe('drug service', () => {
 
         expect(results.map((drug) => drug.name)).toEqual(['Warfarin', 'JANTOVEN']);
         expect(getCachedDrugIds).toHaveBeenCalledWith('warfarin');
+        expect(getDrugsByIds).toHaveBeenCalledWith(['drug-1', 'drug-2'], {searchSummary: true});
         expect(getDrugByName).not.toHaveBeenCalled();
         expect(fetchAnaloguesFromFDA).not.toHaveBeenCalled();
         expect(createVector).not.toHaveBeenCalled();
         expect(saveSearchResult).not.toHaveBeenCalled();
+    });
+
+    test('collapses legacy duplicate names and prefers the FDA-labelled record', async () => {
+        const bare = {_id: 'drug-1', name: 'WARFARIN SODIUM', activeIngredient: 'WARFARIN SODIUM', guidelines: {source: 'FDA'}};
+        const labelled = {
+            _id: 'drug-2', name: 'WARFARIN SODIUM', activeIngredient: 'WARFARIN SODIUM',
+            guidelines: {source: 'FDA', contentHash: 'label-hash', sourceUrl: 'https://example.com/label'}
+        };
+        getDrugByName.mockResolvedValueOnce([bare, labelled, bare]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([]);
+
+        await expect(getSimilarDrugs('warfarin')).resolves.toEqual([labelled]);
+        expect(saveSearchResult).toHaveBeenCalledWith(
+            'warfarin', [labelled], DRUG_SEARCH_FALLBACK_CACHE_TTL_MS
+        );
+        expect(fetchAnaloguesFromFDA).toHaveBeenCalledWith('warfarin');
+    });
+
+    test('deduplicates previously cached legacy IDs', async () => {
+        const bare = {_id: 'drug-1', name: 'WARFARIN SODIUM', activeIngredient: 'WARFARIN SODIUM'};
+        const labelled = {
+            _id: 'drug-2', name: 'WARFARIN SODIUM', activeIngredient: 'WARFARIN SODIUM',
+            guidelines: {contentHash: 'label-hash'}
+        };
+        getCachedDrugIds.mockResolvedValueOnce(['drug-1', 'drug-2']);
+        getDrugsByIds.mockResolvedValueOnce([bare, labelled]);
+
+        await expect(getSimilarDrugs('warfarin')).resolves.toEqual([labelled]);
+        expect(getDrugByName).not.toHaveBeenCalled();
     });
 
     test('reuses an empty search result during a brief FDA outage', async () => {
@@ -284,10 +316,10 @@ describe('drug service', () => {
         fetchAnaloguesFromFDA.mockResolvedValueOnce([]);
 
         await expect(getSimilarDrugs('warfarin')).resolves.toEqual([localDrug]);
-        expect(fetchAnaloguesFromFDA).not.toHaveBeenCalled();
+        expect(fetchAnaloguesFromFDA).toHaveBeenCalledWith('warfarin');
     });
 
-    test('returns local matches without checking external sources', async () => {
+    test('excludes combination products while checking openFDA for analogues', async () => {
         getDrugByName.mockResolvedValueOnce([
             {
                 _id: 'combo-drug',
@@ -302,9 +334,44 @@ describe('drug service', () => {
         ]);
         fetchAnaloguesFromFDA.mockResolvedValueOnce([]);
 
-        await getSimilarDrugs('amoxicillin');
+        const result = await getSimilarDrugs('amoxicillin');
 
-        expect(fetchAnaloguesFromFDA).not.toHaveBeenCalled();
+        expect(result.map((drug) => drug.name)).toEqual(['Amoxicillin']);
+        expect(fetchAnaloguesFromFDA).toHaveBeenCalledWith('amoxicillin');
+        expect(findDailyMedDrug).not.toHaveBeenCalled();
+    });
+
+    test('returns distinct local products sharing the active ingredient', async () => {
+        const warfarin = {_id: 'drug-1', name: 'WARFARIN SODIUM', activeIngredient: 'WARFARIN SODIUM'};
+        const jantoven = {_id: 'drug-2', name: 'JANTOVEN', activeIngredient: 'WARFARIN SODIUM'};
+        const combination = {_id: 'drug-3', name: 'WARFARIN AND OTHER', activeIngredient: 'WARFARIN; OTHER'};
+        getDrugByName.mockResolvedValueOnce([warfarin, warfarin, jantoven, combination]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([]);
+
+        const result = await getSimilarDrugs('warfarin');
+
+        expect(result.map((drug) => drug.name)).toEqual(['WARFARIN SODIUM', 'JANTOVEN']);
+        expect(saveSearchResult).toHaveBeenCalledWith(
+            'warfarin', result, DRUG_SEARCH_FALLBACK_CACHE_TTL_MS
+        );
+    });
+
+    test('merges local products with distinct FDA-labelled analogues', async () => {
+        const warfarin = {_id: 'drug-1', name: 'WARFARIN SODIUM', activeIngredient: 'WARFARIN SODIUM'};
+        const coumadin = {_id: 'drug-2', name: 'COUMADIN', activeIngredient: 'WARFARIN SODIUM'};
+        getDrugByName.mockResolvedValueOnce([warfarin]).mockResolvedValueOnce([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([
+            {openfda: {brand_name: ['COUMADIN'], generic_name: ['WARFARIN SODIUM']}, warnings: ['label text']},
+            {openfda: {brand_name: ['COUMADIN'], generic_name: ['WARFARIN SODIUM']}, warnings: ['label text']}
+        ]);
+        createVector.mockResolvedValueOnce([0.1]);
+        createDrug.mockResolvedValueOnce(coumadin);
+
+        const result = await getSimilarDrugs('warfarin');
+
+        expect(result.map((drug) => drug.name)).toEqual(['WARFARIN SODIUM', 'COUMADIN']);
+        expect(createDrug).toHaveBeenCalledTimes(1);
+        expect(saveSearchResult).toHaveBeenCalledWith('warfarin', result);
     });
 
     test('does not present combination products as an exact ingredient result', async () => {

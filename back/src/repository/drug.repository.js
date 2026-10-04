@@ -10,6 +10,9 @@ import {
 
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const SEARCH_SUMMARY_FIELDS = '_id name activeIngredient guidelines.source guidelines.sourceUrl ' +
+    'guidelines.verificationSource guidelines.verificationUrl guidelines.contentHash';
+
 export const createDrug = async (drug) => await Drug.create({
     ...drug,
     normalizedName: normalizeDrugName(drug.name)
@@ -32,8 +35,8 @@ export const upsertInternationalDrug = async ({name, activeIngredient, source, s
     )
 );
 
-export const getDrugsByIds = async (drugIds) => await Drug.find({ _id: { $in: drugIds } })
-    .select('-guidelines.embedding');
+export const getDrugsByIds = async (drugIds, {searchSummary = false} = {}) => await Drug.find({ _id: { $in: drugIds } })
+    .select(searchSummary ? SEARCH_SUMMARY_FIELDS : '-guidelines.embedding');
 
 export const getDrug = async (vectorSymptom, drugIds) => {
     const ids = drugIds.map(
@@ -83,15 +86,16 @@ export const getDrug = async (vectorSymptom, drugIds) => {
     return await Drug.aggregate(pipeline);
 };
 
-export const getDrugByName = async (name, {excludeEmbedding = false} = {}) => {
+export const getDrugByName = async (name, {searchSummary = false} = {}) => {
     const normalizedName = normalizeDrugName(name);
     const query = Drug.find({
         $or: [
             {normalizedName},
-            {name: {$regex: escapeRegex(name.trim()), $options: 'i'}}
+            {name: {$regex: escapeRegex(name.trim()), $options: 'i'}},
+            {activeIngredient: {$regex: escapeRegex(name.trim()), $options: 'i'}}
         ]
     });
-    return await (excludeEmbedding ? query.select('-guidelines.embedding') : query);
+    return await (searchSummary ? query.select(SEARCH_SUMMARY_FIELDS) : query);
 }
 
 export const updateDrug = async (id, data) => {
