@@ -1,28 +1,15 @@
-import config from "../configuration/config.js";
 import {
     EXPENSIVE_ENDPOINT_RATE_LIMIT_MAX_REQUESTS,
     EXPENSIVE_ENDPOINT_RATE_LIMIT_WINDOW_MS
 } from "../utils/constants.js";
-import {TooManyRequestsError, UnauthorizedError} from "../utils/errors.js";
+import {TooManyRequestsError} from "../utils/errors.js";
 
 const requestBuckets = new Map();
+const authBuckets = new Map();
 
 const getClientKey = (req) => (
-    `${req.ip || req.socket?.remoteAddress || 'unknown'}:${req.method}:${req.originalUrl || req.path}`
+    `${req.user.id}:${req.method}:${req.originalUrl || req.path}`
 );
-
-const enforceDemoApiKey = (req, next) => {
-    if (!config.demoApiKey) {
-        return true;
-    }
-
-    if (req.get('x-demo-api-key') === config.demoApiKey) {
-        return true;
-    }
-
-    next(new UnauthorizedError('Missing or invalid demo API key'));
-    return false;
-};
 
 const enforceRateLimit = (req, next) => {
     const now = Date.now();
@@ -47,13 +34,22 @@ const enforceRateLimit = (req, next) => {
 };
 
 export const protectExpensiveEndpoint = (req, res, next) => {
-    if (!enforceDemoApiKey(req, next)) {
-        return;
-    }
-
     if (!enforceRateLimit(req, next)) {
         return;
     }
 
     next();
+};
+
+export const protectAuthEndpoint = (req, res, next) => {
+    const now = Date.now();
+    const key = req.ip || req.socket?.remoteAddress || 'unknown';
+    const bucket = authBuckets.get(key);
+    if (!bucket || bucket.expiresAt <= now) {
+        authBuckets.set(key, {count: 1, expiresAt: now + 15 * 60 * 1000});
+        return next();
+    }
+    bucket.count++;
+    if (bucket.count > 10) return next(new TooManyRequestsError('Too many sign-in attempts'));
+    return next();
 };

@@ -1,4 +1,5 @@
 import type {Drug} from "../utils/types";
+import {isPubChemOnlyDrug} from "../utils/drugEvidence.ts";
 
 type Props = {
     data?: Drug[];
@@ -41,7 +42,7 @@ const List = ({data, isLoading, isError, errorMessage, onAdd} : Props) => {
                                         rel="noopener noreferrer"
                                         onClick={(event) => event.stopPropagation()}
                                     >{item.guidelines.verificationSource}</a>.</>
-                                ) : item.guidelines.source === 'PubChem (NIH)'
+                                ) : isPubChemOnlyDrug(item)
                                     ? ' Chemical identity only; medicinal product and interactions are not verified.'
                                     : item.guidelines.source !== 'FDA' ? ' FDA label evidence is unavailable.' : null}
                             </small>

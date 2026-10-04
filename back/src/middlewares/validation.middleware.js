@@ -10,6 +10,15 @@ const interactionResultSchema = Joi.object({
 });
 
 const schemas = {
+    register: Joi.object({
+        email: Joi.string().trim().email().max(254).required(),
+        password: Joi.string().min(12).max(128).required(),
+        registrationCode: Joi.string().min(1).max(200).required()
+    }),
+    login: Joi.object({
+        email: Joi.string().trim().email().max(254).required(),
+        password: Joi.string().max(128).required()
+    }),
     searchDrugs: Joi.object({
         text: Joi.string().trim().min(1).max(100).required()
     }),

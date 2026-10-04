@@ -1,10 +1,10 @@
 import './App.css'
-import SearchPanel from "./components/SearchPanel.tsx";
+import AuthGate from "./components/AuthGate.tsx";
 
 function App() {
 
   return (
-    <SearchPanel />
+    <AuthGate />
   )
 }
 

@@ -10,6 +10,7 @@ import List from "./List.tsx";
 import GraphView from "./GraphView.tsx";
 import EvidenceAnswer from './EvidenceAnswer.tsx';
 import type {Drug, Interaction} from "../utils/types";
+import {isPubChemOnlyDrug} from "../utils/drugEvidence.ts";
 
 type ApiError = {
     status?: number | string;
@@ -25,7 +26,7 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
     }
 
     if (status === 401) {
-        return 'Demo API key is missing or invalid. Check VITE_DEMO_API_KEY.';
+        return 'Session expired. Please sign in again.';
     }
 
     if (status === 429) {
@@ -108,6 +109,7 @@ const SearchPanel = () => {
     const highlightedDrugs = symptomSearchResult?.drugs ?? [];
     const highlightedInteractions = symptomSearchResult?.interactions ?? [];
     const activeDrugById = new Map(activeDrugs.map((drug) => [drug._id, drug]));
+    const pubChemOnlyDrugNames = activeDrugs.filter(isPubChemOnlyDrug).map((drug) => drug.name);
 
     return (
         <div className={'m-6'}>
@@ -224,13 +226,14 @@ const SearchPanel = () => {
                 </div>
             ) : null}
             {ragResult && !isLoadingAnswer ? (
-                <EvidenceAnswer title="Answer from FDA labels" answer={ragResult.answer} sources={ragResult.sources}/>
+                <EvidenceAnswer title="Answer from FDA labels" answer={ragResult.answer} sources={ragResult.sources} pubChemOnlyDrugNames={pubChemOnlyDrugNames}/>
             ) : null}
             {agentResult && !isLoadingAgent ? (
                 <EvidenceAnswer
                     title="Agent answer from FDA labels"
                     answer={agentResult.answer}
                     sources={agentResult.sources}
+                    pubChemOnlyDrugNames={pubChemOnlyDrugNames}
                     toolCalls={agentResult.toolCalls}
                 />
             ) : null}

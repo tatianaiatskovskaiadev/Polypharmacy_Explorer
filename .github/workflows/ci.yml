@@ -18,7 +18,7 @@ jobs:
       MONGO_URI: mongodb://localhost:27017
       DB_NAME: polypharmacy_test
       OPENAI_API_KEY: sk-test
-      DEMO_API_KEY: demo-test
+      REGISTRATION_CODE: test-invite-code
       CORS_ORIGIN: http://localhost:5173
     steps:
       - name: Checkout
@@ -45,7 +45,6 @@ jobs:
         working-directory: front
     env:
       VITE_API_URL: http://localhost:3000
-      VITE_DEMO_API_KEY: demo-test
     steps:
       - name: Checkout
         uses: actions/checkout@v7

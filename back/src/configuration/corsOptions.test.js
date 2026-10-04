@@ -1,9 +1,10 @@
 import {describe, expect, test} from '@jest/globals';
 import {corsOptions} from './corsOptions.js';
-import {DEMO_API_KEY_HEADER} from '../utils/constants.js';
+import {CSRF_TOKEN_HEADER} from '../utils/constants.js';
 
 describe('cors options', () => {
-    test('allows demo API key header for browser preflight requests', () => {
-        expect(corsOptions.allowedHeaders).toContain(DEMO_API_KEY_HEADER);
+    test('allows credentialed requests with a CSRF header', () => {
+        expect(corsOptions.credentials).toBe(true);
+        expect(corsOptions.allowedHeaders).toContain(CSRF_TOKEN_HEADER);
     });
 });

@@ -24,6 +24,7 @@ This project turns that workflow into an interactive graph:
 - Source-linked discovery with separate identity and verification URLs; no per-drug catalog is hardcoded.
 - Interaction graph built with React Flow and Dagre layout.
 - Graph warning that missing edges mean unavailable/absent data, not proven safety.
+- PubChem-only drugs are marked on graph nodes, with a warning that chemical identity is not FDA label evidence.
 - Normalized unique drug names to reduce duplicate records from casing and whitespace differences.
 - Canonical interaction pairs, so `A + B` and `B + A` share one cached record.
 - AI normalization with strict Joi validation before storing model output.
@@ -33,7 +34,7 @@ This project turns that workflow into an interactive graph:
 - Centralized API validation and normalized error responses.
 - FDA retry/backoff and graceful degradation for interaction checks when external APIs are rate-limited.
 - Bounded concurrency and in-flight deduplication for expensive interaction analysis.
-- Demo API key gate and in-memory rate limit for write/AI-cost endpoints.
+- Registration-code-gated accounts, API-managed sessions, CSRF protection, and per-user in-memory rate limits for costly endpoints.
 - Backend tests for validation, error handling, canonical pair behavior, importable app setup, and long FDA label handling.
 
 ## Architecture
@@ -66,6 +67,8 @@ Backend structure:
 - `repository` isolates MongoDB queries and canonical pair persistence.
 - `models` define Mongoose schemas and indexes.
 - `middlewares` handle validation and normalized errors.
+
+The Vite SPA is designed for static hosting on S3 behind CloudFront, with Route 53 for DNS. The Express API owns authentication and session validation; AWS deployment is not implemented yet. For a separate API hostname, use a custom domain under the same site as the SPA so its `SameSite=Lax` session cookie works with credentialed browser requests. Configure that SPA origin in `CORS_ORIGIN`.
 
 ## Tech Stack
 
@@ -131,7 +134,7 @@ MONGO_URI=mongodb://user:password@localhost:27017/?authSource=admin
 DB_NAME=polypharmacy
 OPENAI_API_KEY=sk-...
 CORS_ORIGIN=http://localhost:5173
-DEMO_API_KEY=change-me
+REGISTRATION_CODE=replace-with-a-long-random-invitation-code
 ```
 
 Create frontend env:
@@ -144,10 +147,11 @@ Frontend variable:
 
 ```env
 VITE_API_URL=http://localhost:3000
-VITE_DEMO_API_KEY=change-me
 ```
 
-`OPENAI_API_KEY` is required at backend startup. `DEMO_API_KEY` is optional for local development, where the server prints a warning if it is missing; outside local runtime, for example `NODE_ENV=production`, startup fails without it.
+`OPENAI_API_KEY` is required at backend startup. `REGISTRATION_CODE` gates account creation and is required outside local runtime with at least 24 characters. Generate a random code for deployment, for example with `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`. Never place the code in a `VITE_` variable. Users enter it in the registration form; a shared code can be reused until it is rotated.
+
+The API stores a hashed random session token in MongoDB and sends the raw token only in a seven-day, HttpOnly cookie (`Secure` in production). `/auth/me` returns the current user and a CSRF token; the SPA includes that token on authenticated POST requests. Login and registration are rate-limited by client IP; costly endpoints are rate-limited by signed-in user. These limits still use process memory and need shared storage before running multiple API instances.
 
 ## Setup
 
@@ -214,10 +218,21 @@ npm run backfill:normalized-names
 
 ## API Examples
 
+Create an account using the invitation code and save the session cookie:
+
+```bash
+curl -c cookies.txt -X POST http://localhost:3000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"person@example.com","password":"a-long-unique-password","registrationCode":"YOUR_REGISTRATION_CODE"}'
+```
+
+The JSON response contains `csrfToken`. Send it as `x-csrf-token` with the saved cookie on subsequent POST requests. Existing users can POST `email` and `password` to `/auth/login`; GET `/auth/me` restores the CSRF token after a page reload, and POST `/auth/logout` invalidates the session.
+
 Search and enrich drugs:
 
 ```bash
 curl -X POST http://localhost:3000/search \
+  -b cookies.txt -H "x-csrf-token: YOUR_CSRF_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"text\":\"ibuprofen\"}"
 ```
@@ -226,6 +241,7 @@ Check interactions for selected drugs:
 
 ```bash
 curl -X POST http://localhost:3000/interactions/check \
+  -b cookies.txt -H "x-csrf-token: YOUR_CSRF_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"drugIds\":[\"DRUG_ID_A\",\"DRUG_ID_B\"]}"
 ```
@@ -247,6 +263,7 @@ Highlight selected drugs by symptom or risk phrase:
 
 ```bash
 curl -X POST http://localhost:3000/search/symptom \
+  -b cookies.txt -H "x-csrf-token: YOUR_CSRF_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"text\":\"stomach bleeding risk\",\"drugIds\":[\"DRUG_ID_A\",\"DRUG_ID_B\"]}"
 ```
@@ -266,8 +283,8 @@ Ask a question grounded in indexed FDA label passages for selected drugs:
 
 ```bash
 curl -X POST http://localhost:3000/rag/answer \
+  -b cookies.txt -H "x-csrf-token: YOUR_CSRF_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "x-demo-api-key: change-me" \
   -d '{"question":"What do the labels say about bleeding risk?","drugIds":["DRUG_ID_A","DRUG_ID_B"]}'
 ```
 
@@ -277,8 +294,8 @@ The agent endpoint accepts the same payload for up to four selected drugs:
 
 ```bash
 curl -X POST http://localhost:3000/agent/ask \
+  -b cookies.txt -H "x-csrf-token: YOUR_CSRF_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "x-demo-api-key: change-me" \
   -d '{"question":"What interaction evidence is available?","drugIds":["DRUG_ID_A","DRUG_ID_B"]}'
 ```
 
@@ -312,7 +329,7 @@ Current backend test coverage focuses on:
 - OpenAI and FDA external error mapping
 - bounded interaction sync concurrency
 - in-flight deduplication for concurrent interaction pair syncs
-- demo API key and rate-limit protection for costly endpoints
+- registration-code-gated login, session and CSRF protection, and rate limits for costly endpoints
 - normalized drug name duplicate protection
 - FDA-grounded RAG and tool-calling agent citation gates
 
@@ -320,7 +337,7 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 19 suites, 78 tests |
+| `cd back && npm test` | Passed: 22 suites, 88 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed |
 
@@ -357,14 +374,15 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - **Long FDA labels are bounded before embedding.** The service limits FDA text length to avoid OpenAI context-limit failures.
 - **Express app and server bootstrap are separated.** `src/app.js` can be imported by tests without opening a network port.
 - **openFDA calls use retry/backoff and best-effort degradation.** Rate-limited or unavailable FDA calls do not fail the entire interaction check; cached/successful interactions are still returned.
-- **Expensive endpoints are gated for demos.** When `DEMO_API_KEY` is configured, write/AI-cost routes require `x-demo-api-key`; they also have an in-memory rate limit.
-- **Runtime configuration fails fast.** The backend refuses to start without `OPENAI_API_KEY`; non-local runtimes also require `DEMO_API_KEY`.
+- **API sessions gate costly endpoints.** Signed-in users send an HttpOnly session cookie and CSRF header; rate limits are keyed by user. Login and registration have separate IP-based limits.
+- **Runtime configuration fails fast.** The backend refuses to start without `OPENAI_API_KEY`; non-local runtimes also require a long `REGISTRATION_CODE`.
 
 ## Limitations
 
 - This is not medical advice and must not be used for clinical decisions.
 - A missing graph edge means no interaction record was found or returned for that pair; it does not prove the combination is safe.
 - Backend is JavaScript while frontend is TypeScript; backend TypeScript migration is a future improvement.
+- AWS deployment is not implemented in this repository; email verification, password recovery, and session management UI are not implemented yet.
 - Structured logging, request IDs, and metrics are not fully implemented yet.
 - Docker Compose is not included yet.
 - CI exists for backend tests and frontend build/lint, but deployment/CD and Docker image build checks are not configured yet.
@@ -378,10 +396,9 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 
 ## Roadmap
 
-- Add Docker Compose for MongoDB, backend, and frontend.
-- Extend GitHub Actions with Docker build and deployment checks.
-- Add structured logging with request IDs and redaction.
-- Add API versioning under `/api/v1`.
-- Improve frontend empty states, per-pair interaction progress, and result explainability.
-- Store FDA source snippets, model name, prompt version, confidence metadata, and timestamps for auditability.
-- Add Redis caching or a background queue for high-latency FDA/OpenAI workflows.
+1. Extend API-owned authentication with email verification, password recovery, session management UI, and a deployment-ready domain and proxy configuration.
+2. Strengthen evidence presentation and evaluation. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; test insufficient-evidence behavior and citation quality against a fixed set of example questions.
+3. Improve reliability and observability. Add request IDs, structured logs with sensitive-data redaction, and request/cost metrics. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
+4. Add frontend regression tests and polish the graph layout, empty states, per-pair progress, and interaction details. Fix the graph's viewport-sized container within the page layout.
+5. Define AWS infrastructure as code for S3, CloudFront, Route 53, an API runtime, TLS, secrets, and monitoring. Extend GitHub Actions with Docker build, staging deployment, and post-deployment checks.
+6. Add a local multi-service setup and consider backend TypeScript migration and `/api/v1` versioning after the API contract stabilizes.

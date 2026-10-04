@@ -7,7 +7,9 @@ import drugRoutes from "./routes/drug.routes.js";
 import interactionRoutes from "./routes/interaction.routes.js";
 import ragRoutes from './routes/rag.routes.js';
 import agentRoutes from './routes/agent.routes.js';
-import {protectExpensiveEndpoint} from "./middlewares/cost-control.middleware.js";
+import authRoutes from './routes/auth.routes.js';
+import {protectAuthEndpoint, protectExpensiveEndpoint} from "./middlewares/cost-control.middleware.js";
+import {requireAllowedOrigin, requireAuth, requireCsrf} from './middlewares/auth.middleware.js';
 
 const app = express();
 
@@ -24,13 +26,17 @@ const EXPENSIVE_ENDPOINTS = [
 app.use(cors(corsOptions));
 
 app.use(express.json({limit: '100kb'}));
+app.use(requireAllowedOrigin);
 
 app.get('/health', (req, res) => {
     const dbUp = mongoose.connection.readyState === 1;
     res.status(dbUp ? 200 : 503).json({status: dbUp ? 'ok' : 'degraded', db: dbUp ? 'up' : 'down'});
 });
 
-app.post(EXPENSIVE_ENDPOINTS, protectExpensiveEndpoint);
+app.post(['/auth/register', '/auth/login'], protectAuthEndpoint);
+app.use('/', authRoutes);
+
+app.post(EXPENSIVE_ENDPOINTS, requireAuth, requireCsrf, protectExpensiveEndpoint);
 
 app.use('/', drugRoutes);
 app.use('/', interactionRoutes);

@@ -9,21 +9,29 @@ import type {
     SymptomSearchRequest,
     SymptomSearchResponse
 } from "../../utils/types";
+import {clearSession, type AuthSession} from '../auth/authSlice.ts';
 
-const DEMO_API_KEY_HEADER = 'x-demo-api-key';
+const rawBaseQuery = fetchBaseQuery({
+    baseUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:3000',
+    credentials: 'include',
+    prepareHeaders: (headers, {getState}) => {
+        const session = (getState() as {auth: AuthSession | null}).auth;
+        if (session?.csrfToken) {
+            headers.set('x-csrf-token', session.csrfToken);
+        }
+        return headers;
+    }
+});
+
+const baseQuery: typeof rawBaseQuery = async (args, api, extraOptions) => {
+    const result = await rawBaseQuery(args, api, extraOptions);
+    if (result.error?.status === 401) api.dispatch(clearSession());
+    return result;
+};
 
 export const drugApi = createApi({
     reducerPath: 'drugApi',
-    baseQuery: fetchBaseQuery({
-        baseUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:3000',
-        prepareHeaders: (headers) => {
-            const demoApiKey = import.meta.env.VITE_DEMO_API_KEY;
-            if (demoApiKey) {
-                headers.set(DEMO_API_KEY_HEADER, demoApiKey);
-            }
-            return headers;
-        }
-    }),
+    baseQuery,
     endpoints: builder => ({
         getDrugs: builder.query<Drug[], string>({
             query: (text) => ({

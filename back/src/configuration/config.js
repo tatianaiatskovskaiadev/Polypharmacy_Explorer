@@ -17,7 +17,7 @@ const config = {
     port: process.env[ENV_VARS.port] || DEFAULT_PORT,
     nodeEnv: process.env[ENV_VARS.nodeEnv],
     corsOrigins: (process.env[ENV_VARS.corsOrigin] || DEFAULT_CORS_ORIGIN).split(',').map(o => o.trim()),
-    demoApiKey: process.env[ENV_VARS.demoApiKey],
+    registrationCode: process.env[ENV_VARS.registrationCode],
     mongodb: {
         uri: process.env[ENV_VARS.mongoUri],
         db: {
@@ -36,12 +36,11 @@ export const validateRuntimeConfig = () => {
     required(ENV_VARS.dbName);
     required(ENV_VARS.openAiApiKey);
 
-    if (!process.env[ENV_VARS.demoApiKey]) {
-        if (!isLocalRuntime()) {
-            throw new Error(`Missing required environment variable outside local runtime: ${ENV_VARS.demoApiKey}`);
-        }
-
-        console.warn(`${ENV_VARS.demoApiKey} is not set. Expensive demo endpoints are not API-key gated in local runtime.`);
+    if (!process.env[ENV_VARS.registrationCode] && !isLocalRuntime()) {
+        throw new Error(`Missing required environment variable outside local runtime: ${ENV_VARS.registrationCode}`);
+    }
+    if (!isLocalRuntime() && process.env[ENV_VARS.registrationCode].length < 24) {
+        throw new Error(`${ENV_VARS.registrationCode} must contain at least 24 characters outside local runtime`);
     }
 }
 

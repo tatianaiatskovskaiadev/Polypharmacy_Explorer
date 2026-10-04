@@ -1,22 +1,19 @@
 import {describe, expect, test} from '@jest/globals';
 import request from 'supertest';
 import app from './app.js';
-import {DEMO_API_KEY_HEADER} from './utils/constants.js';
 
 describe('app', () => {
-    test('rejects invalid search payload with normalized validation error', async () => {
+    test('requires a session before validating protected search requests', async () => {
         const response = await request(app)
             .post('/search')
-            .set(DEMO_API_KEY_HEADER, process.env.DEMO_API_KEY ?? '')
             .send({text: ''});
 
-        expect(response.status).toBe(400);
+        expect(response.status).toBe(401);
         expect(response.body).toEqual(expect.objectContaining({
-            status: 400,
-            error: 'Bad Request',
+            status: 401,
+            error: 'UnauthorizedError',
             path: '/search'
         }));
-        expect(response.body.message).toContain('"text" is not allowed to be empty');
     });
 
     test('can be imported without starting the HTTP server', async () => {
@@ -29,26 +26,37 @@ describe('app', () => {
         });
     });
 
-    test('validates RAG questions before retrieval', async () => {
+    test('requires a session for RAG requests', async () => {
         const response = await request(app)
             .post('/rag/answer')
-            .set(DEMO_API_KEY_HEADER, process.env.DEMO_API_KEY ?? '')
             .send({question: 'Hi', drugIds: ['invalid']});
 
-        expect(response.status).toBe(400);
+        expect(response.status).toBe(401);
         expect(response.body.path).toBe('/rag/answer');
     });
 
-    test('limits agent requests to four selected drugs', async () => {
+    test('requires a session for agent requests', async () => {
         const response = await request(app)
             .post('/agent/ask')
-            .set(DEMO_API_KEY_HEADER, process.env.DEMO_API_KEY ?? '')
             .send({question: 'What interactions are described?', drugIds: Array.from({length: 5}, (_, index) => (
                 index.toString(16).padStart(24, '0')
             ))});
 
-        expect(response.status).toBe(400);
+        expect(response.status).toBe(401);
         expect(response.body.path).toBe('/agent/ask');
+    });
+
+    test('rejects malformed registration before reaching the database', async () => {
+        const response = await request(app).post('/auth/register').send({email: 'invalid', password: 'short'});
+        expect(response.status).toBe(400);
+        expect(response.body.path).toBe('/auth/register');
+    });
+
+    test('blocks a disallowed origin on write requests', async () => {
+        const response = await request(app).post('/auth/login')
+            .set('Origin', 'https://untrusted.example')
+            .send({email: 'person@example.com', password: 'password'});
+        expect(response.status).toBe(403);
     });
 
     test('does not apply expensive endpoint protection to unknown routes', async () => {

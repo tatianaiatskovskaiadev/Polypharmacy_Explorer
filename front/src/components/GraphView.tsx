@@ -12,6 +12,7 @@ import {useAppDispatch, useAppSelector} from "../app/hooks.ts";
 import * as React from "react";
 import {open, close} from "../features/window/windowSlice.ts";
 import {getLayoutedElements, NODE_HEIGHT, NODE_WIDTH} from "../utils/graphLayout.ts";
+import {isPubChemOnlyDrug} from "../utils/drugEvidence.ts";
 
 type Props = {
     data: Drug[];
@@ -35,11 +36,21 @@ const GraphView = ({
     const nodePositionsRef = useRef(new Map<string, {x: number; y: number}>());
     const modalConfig = useAppSelector((state) => state.window);
     const dispatch = useAppDispatch();
+    const pubChemOnlyDrugs = data.filter(isPubChemOnlyDrug);
 
     const {nodes: layoutedNodes, edges} = useMemo(() => {
         const newNodes: Node[] = data.map((drug) => ({
             id: drug._id,
-            data: {label: drug.name},
+            data: {label: (
+                <div className="flex flex-col items-center gap-1 text-center">
+                    <span className="break-words font-medium">{drug.name}</span>
+                    {isPubChemOnlyDrug(drug) ? (
+                        <span className="rounded bg-amber-100 px-1 text-xs font-semibold text-amber-900">
+                            PubChem only · FDA evidence unavailable
+                        </span>
+                    ) : null}
+                </div>
+            )},
             position: {
                 x: 0,
                 y: 0,
@@ -55,7 +66,10 @@ const GraphView = ({
                     backgroundColor: "#ffe6e6",
                     boxShadow: "0 0 10px red",
                 }
-                : {},
+                : isPubChemOnlyDrug(drug) ? {
+                    border: "2px dashed #b45309",
+                    backgroundColor: "#fffbeb",
+                } : {},
         }));
 
         const highlightedInteractionIds = new Set(
@@ -124,14 +138,24 @@ const GraphView = ({
 
     return (
         <div
+            className="relative"
             style={{
                 width: "100vw",
                 height: "100vh",
             }}
         >
-            {data.length > 1 ? (
+            {data.length > 1 || pubChemOnlyDrugs.length > 0 ? (
                 <div className="absolute z-10 m-3 max-w-md rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900 shadow-sm">
-                    Missing lines mean no interaction data was found or returned for that pair. They do not prove the combination is safe.
+                    {pubChemOnlyDrugs.length > 0 ? (
+                        <p>
+                            PubChem only: {pubChemOnlyDrugs.map((drug) => drug.name).join(', ')}. Chemical identity does not verify a medicinal product or its interactions. No FDA label passages are available for these entries.
+                        </p>
+                    ) : null}
+                    {data.length > 1 ? (
+                        <p className={pubChemOnlyDrugs.length > 0 ? 'mt-2' : undefined}>
+                            Missing lines mean no interaction data was found or returned for that pair. They do not prove the combination is safe.
+                        </p>
+                    ) : null}
                 </div>
             ) : null}
             <ReactFlow

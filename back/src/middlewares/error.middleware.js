@@ -10,7 +10,7 @@ const errorResponse = (res, req, status, error, message) => res.status(status).j
 });
 
 const errorHandler = (err, req, res, next) => {
-    console.error(err.stack);
+    if (!(err instanceof ApiError) || err.statusCode >= 500) console.error(err.stack);
 
     if (err instanceof ApiError) {
         return errorResponse(res, req, err.statusCode, err.name, err.message);

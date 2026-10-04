@@ -12,6 +12,18 @@ export class UnauthorizedError extends ApiError {
     }
 }
 
+export class ForbiddenError extends ApiError {
+    constructor(message = 'Forbidden') {
+        super(403, message);
+    }
+}
+
+export class ConflictError extends ApiError {
+    constructor(message = 'Conflict') {
+        super(409, message);
+    }
+}
+
 export class TooManyRequestsError extends ApiError {
     constructor(message = 'Too many requests') {
         super(429, message);

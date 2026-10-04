@@ -10,7 +10,7 @@ describe('runtime config validation', () => {
         process.env[ENV_VARS.mongoUri] = 'mongodb://localhost:27017';
         process.env[ENV_VARS.dbName] = 'polypharmacy';
         process.env[ENV_VARS.openAiApiKey] = 'sk-test';
-        process.env[ENV_VARS.demoApiKey] = 'demo-secret';
+        process.env[ENV_VARS.registrationCode] = 'invite-secret';
         process.env[ENV_VARS.nodeEnv] = 'test';
         warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     });
@@ -26,20 +26,24 @@ describe('runtime config validation', () => {
         expect(() => validateRuntimeConfig()).toThrow('Missing required environment variable: OPENAI_API_KEY');
     });
 
-    test('requires DEMO_API_KEY outside local runtime', () => {
+    test('requires REGISTRATION_CODE outside local runtime', () => {
         process.env[ENV_VARS.nodeEnv] = 'production';
-        delete process.env[ENV_VARS.demoApiKey];
+        delete process.env[ENV_VARS.registrationCode];
 
-        expect(() => validateRuntimeConfig()).toThrow('Missing required environment variable outside local runtime: DEMO_API_KEY');
+        expect(() => validateRuntimeConfig()).toThrow('Missing required environment variable outside local runtime: REGISTRATION_CODE');
     });
 
-    test('warns instead of failing when DEMO_API_KEY is missing locally', () => {
+    test('allows missing REGISTRATION_CODE locally', () => {
         process.env[ENV_VARS.nodeEnv] = 'development';
-        delete process.env[ENV_VARS.demoApiKey];
+        delete process.env[ENV_VARS.registrationCode];
 
         expect(() => validateRuntimeConfig()).not.toThrow();
-        expect(warnSpy).toHaveBeenCalledWith(
-            'DEMO_API_KEY is not set. Expensive demo endpoints are not API-key gated in local runtime.'
-        );
+        expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    test('rejects a short production invitation code', () => {
+        process.env[ENV_VARS.nodeEnv] = 'production';
+        process.env[ENV_VARS.registrationCode] = 'short';
+        expect(() => validateRuntimeConfig()).toThrow('REGISTRATION_CODE must contain at least 24 characters');
     });
 });
