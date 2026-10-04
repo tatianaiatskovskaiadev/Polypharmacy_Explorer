@@ -1,4 +1,5 @@
-import {fetchRawInteraction} from "./fda.service.js";
+import {fetchInteractionFromFDA} from "./fda.service.js";
+import {fetchInteractionFromDailyMed} from './dailymed.service.js';
 import {normalizeInteractionText} from "./ai.service.js";
 import * as interactionRepository from "../repository/interaction.repository.js";
 import * as drugRepository from "../repository/drug.repository.js";
@@ -71,22 +72,27 @@ const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB
         return existingInteraction;
     }
 
-    let rawText;
-    try {
-        rawText = await fetchRawInteraction(drugNameA, drugNameB);
-    } catch (error) {
-        if (existingInteraction && error instanceof ExternalServiceError) {
-            return existingInteraction;
+    let evidence;
+    let sourceError;
+    for (const lookup of [fetchInteractionFromFDA, fetchInteractionFromDailyMed]) {
+        try {
+            evidence = await lookup(drugNameA, drugNameB);
+            if (evidence) break;
+        } catch (error) {
+            if (!(error instanceof ExternalServiceError)) throw error;
+            sourceError ??= error;
         }
-
-        throw error;
     }
 
-    if (!rawText) return existingInteraction ?? null;
+    if (!evidence) {
+        if (existingInteraction) return existingInteraction;
+        if (sourceError) throw sourceError;
+        return null;
+    }
 
     let normalizedInteraction;
     try {
-        normalizedInteraction = await normalizeInteractionText(rawText, {
+        normalizedInteraction = await normalizeInteractionText(evidence.text, {
             drugNameA,
             drugNameB
         });
@@ -107,6 +113,10 @@ const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB
         colorCode: COLOR_BY_RISK[riskLevel],
         description,
         actionRequired,
+        source: evidence.source,
+        sourceUrl: evidence.sourceUrl,
+        sourceText: evidence.text,
+        sourceRetrievedAt: new Date(),
         analysisVersion: INTERACTION_ANALYSIS_VERSION
     });
 }
@@ -128,4 +138,3 @@ export const syncInteraction = async (drugIdA, drugIdB, drugNameA, drugNameB) =>
     inFlightInteractionSyncs.set(interactionKey, syncPromise);
     return await syncPromise;
 }
-

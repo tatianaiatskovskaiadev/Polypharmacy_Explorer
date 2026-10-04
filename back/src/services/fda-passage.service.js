@@ -72,6 +72,12 @@ export const indexFdaPassages = async (item, drugId, drugName) => {
         }
         return true;
     });
+    if (missing.length === 0 && existing.length === passages.length &&
+        passages.every((passage) => {
+            const previous = cached.get(`${passage.labelId}:${passage.section}:${passage.chunkIndex}`);
+            return previous?.drugName === passage.drugName && previous.sourceUrl === passage.sourceUrl;
+        })) return;
+
     const vectors = missing.length > 0
         ? await createVectors(missing.map((passage) => passage.text))
         : [];

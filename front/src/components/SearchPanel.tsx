@@ -123,8 +123,9 @@ const SearchPanel = () => {
                     className={'border border-gray-300 rounded-md p-2 m-2'}
                     disabled={isLoading}
                     onClick={() => {
-                        if (!searchTerm) return;
-                        getDrugs(searchTerm)
+                        const query = searchTerm.trim();
+                        if (!query) return;
+                        getDrugs(query, true)
                         setSearchTerm('')
                     }}
                 >{isLoading ? 'Searching...' : 'Search'}

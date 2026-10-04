@@ -59,9 +59,8 @@ describe('FDA passage indexing', () => {
         expect(stored.embedding).toEqual([0.1, 0.2]);
 
         getPassagesByDrugId.mockResolvedValueOnce([stored]);
-        replacePassages.mockResolvedValueOnce();
         await indexFdaPassages(label, 'drug-1', 'Drug A');
         expect(createVectors).toHaveBeenCalledTimes(1);
-        expect(replacePassages.mock.calls[1][1][0].embedding).toEqual([0.1, 0.2]);
+        expect(replacePassages).toHaveBeenCalledTimes(1);
     });
 });

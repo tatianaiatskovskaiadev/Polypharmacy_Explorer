@@ -32,13 +32,16 @@ export const FDA_MAX_PASSAGES_PER_LABEL = 24;
 export const RAG_RETRIEVAL_LIMIT = 6;
 export const FDA_PASSAGE_VECTOR_INDEX = 'fda_passage_vector_index';
 export const FDA_PASSAGE_SIMILARITY_THRESHOLD = 0.55;
+export const DRUG_SEARCH_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const DRUG_SEARCH_FALLBACK_CACHE_TTL_MS = 5 * 60 * 1000;
+export const DRUG_SEARCH_VERSION = 3;
 
 export const MAX_EMBEDDING_INPUT_LENGTH = 8_000;
 export const MAX_EMBEDDING_TEXT_LENGTH = 6_000;
 export const MAX_FDA_SECTION_LENGTH = 1_500;
 
 export const RISK_LEVELS = ['minor', 'moderate', 'major', 'critical'];
-export const INTERACTION_ANALYSIS_VERSION = 3;
+export const INTERACTION_ANALYSIS_VERSION = 4;
 export const COLOR_BY_RISK = {
     minor: 'green',
     moderate: 'yellow',

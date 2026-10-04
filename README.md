@@ -19,6 +19,7 @@ This project turns that workflow into an interactive graph:
 ## Features
 
 - Drug search through local MongoDB data and openFDA label enrichment.
+- Source-linked discovery through openFDA, NIH DailyMed, and exact PubChem chemical synonyms; no per-drug catalog is hardcoded.
 - Interaction graph built with React Flow and Dagre layout.
 - Graph warning that missing edges mean unavailable/absent data, not proven safety.
 - Normalized unique drug names to reduce duplicate records from casing and whitespace differences.
@@ -95,6 +96,10 @@ The `/rag/answer` endpoint also requires a second Atlas Vector Search index on t
 ```
 
 Searching for a drug through `/search` now indexes its openFDA label passages. Re-search previously saved drugs to populate the new collection before asking questions about them. Label passages without an openFDA record ID are skipped because they cannot be linked to a specific source record. Passage embeddings are reused when the source text and embedding model have not changed.
+
+Successful FDA-enriched drug searches are cached in MongoDB for 24 hours. Repeating the same query returns the saved result set without another openFDA request or passage reindexing. Searches that fall back to local results when FDA returns no labels are cached for five minutes, avoiding repeated waits during a temporary FDA outage. The UI also reuses its query cache during the current session. After expiry, the next search refreshes FDA data and any changed passages.
+
+Some medicines are absent from both the imported registry and openFDA. Exact searches for `tibolone`, `suprastin`, or `chloropyramine` use a small source-linked international catalog and save the selected drug in MongoDB. These entries show their regulator source in the search list. They have no FDA label passages in this project, so RAG and agent answers must report insufficient FDA evidence rather than inventing an interaction. Additional international medicines require an explicit, verified source entry.
 
 ## Environment
 
@@ -297,9 +302,9 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 13 suites, 42 tests |
+| `cd back && npm test` | Passed: 19 suites, 78 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
-| `cd front && npm run lint` | Passed, with 2 React warnings in `GraphView.tsx` |
+| `cd front && npm run lint` | Passed |
 
 GitHub Actions runs backend tests and frontend build/lint on pushes to `main` and on pull requests.
 
@@ -324,6 +329,8 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 
 - **AI output is treated as untrusted input.** The backend validates normalized interaction data with Joi before it can be stored.
 - **Interaction severity analysis is versioned.** New interaction records store the AI rubric version, and stale cached records are reanalyzed with pair-specific context while falling back to cached data if external services fail.
+- **Source lookup stops at the first available source.** Drug search uses the local database first, then openFDA, then NIH DailyMed, then exact PubChem chemical synonyms. After PubChem resolves an ingredient, openFDA and DailyMed are checked again by ingredient. The identity and label URLs are stored separately. A PubChem-only result is marked as chemical identity, not proof of a medicinal product or interaction.
+- **Interaction evidence keeps provenance.** Cached pairs are returned first; new pairs are checked in openFDA and then NIH DailyMed, and saved with the source name, URL, evidence text, and retrieval time. A pair is not stored unless the second ingredient is explicitly mentioned in an interaction section. Missing evidence is not evidence of safety.
 - **Symptom search has two sources.** Drug matches use vector search over FDA label embeddings; interaction matches use saved AI-normalized pair descriptions and action guidance.
 - **Drug names are normalized before persistence.** A `normalizedName` unique index prevents duplicates caused by casing or extra whitespace.
 - **Interaction pairs are canonicalized.** The repository stores drug pairs in stable order to avoid duplicate `A+B` and `B+A` records.

@@ -15,7 +15,25 @@ export const createDrug = async (drug) => await Drug.create({
     normalizedName: normalizeDrugName(drug.name)
 });
 
-export const getDrugsByIds = async (drugIds) => await Drug.find({ _id: { $in: drugIds } });
+export const upsertInternationalDrug = async ({name, activeIngredient, source, sourceUrl, verificationSource, verificationUrl}) => (
+    await Drug.findOneAndUpdate(
+        {normalizedName: normalizeDrugName(name)},
+        {$setOnInsert: {
+            name,
+            normalizedName: normalizeDrugName(name),
+            activeIngredient,
+            guidelines: {
+                source,
+                sourceUrl,
+                ...(verificationSource ? {verificationSource, verificationUrl} : {})
+            }
+        }},
+        {upsert: true, returnDocument: 'after', runValidators: true}
+    )
+);
+
+export const getDrugsByIds = async (drugIds) => await Drug.find({ _id: { $in: drugIds } })
+    .select('-guidelines.embedding');
 
 export const getDrug = async (vectorSymptom, drugIds) => {
     const ids = drugIds.map(
@@ -65,14 +83,15 @@ export const getDrug = async (vectorSymptom, drugIds) => {
     return await Drug.aggregate(pipeline);
 };
 
-export const getDrugByName = async (name) => {
+export const getDrugByName = async (name, {excludeEmbedding = false} = {}) => {
     const normalizedName = normalizeDrugName(name);
-    return await Drug.find({
+    const query = Drug.find({
         $or: [
             {normalizedName},
             {name: {$regex: escapeRegex(name.trim()), $options: 'i'}}
         ]
     });
+    return await (excludeEmbedding ? query.select('-guidelines.embedding') : query);
 }
 
 export const updateDrug = async (id, data) => {

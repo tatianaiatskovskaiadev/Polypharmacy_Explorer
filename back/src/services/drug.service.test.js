@@ -1,14 +1,23 @@
 import {beforeEach, describe, expect, jest, test} from '@jest/globals';
 import {createHash} from 'crypto';
+import {DRUG_SEARCH_FALLBACK_CACHE_TTL_MS} from '../utils/constants.js';
+import {ExternalServiceError} from '../utils/errors.js';
 
 const createVector = jest.fn();
 const createVectors = jest.fn();
 const fetchAnaloguesFromFDA = jest.fn();
+const findDailyMedDrug = jest.fn();
+const resolveIngredientFromPubChem = jest.fn();
+const indexFdaPassages = jest.fn();
 const createDrug = jest.fn();
+const upsertInternationalDrug = jest.fn();
+const getDrugsByIds = jest.fn();
 const getDrugByName = jest.fn();
 const updateDrug = jest.fn();
 const getDrug = jest.fn();
 const searchInteractionsByText = jest.fn();
+const getCachedDrugIds = jest.fn();
+const saveSearchResult = jest.fn();
 
 jest.unstable_mockModule('./ai.service.js', () => ({
     createVector,
@@ -19,11 +28,22 @@ jest.unstable_mockModule('./fda.service.js', () => ({
     fetchAnaloguesFromFDA
 }));
 
+jest.unstable_mockModule('./dailymed.service.js', () => ({findDailyMedDrug}));
+jest.unstable_mockModule('./ingredient-resolution.service.js', () => ({resolveIngredientFromPubChem}));
+jest.unstable_mockModule('./fda-passage.service.js', () => ({indexFdaPassages}));
+
 jest.unstable_mockModule('../repository/drug.repository.js', () => ({
     createDrug,
+    upsertInternationalDrug,
     getDrug,
+    getDrugsByIds,
     getDrugByName,
     updateDrug
+}));
+
+jest.unstable_mockModule('../repository/drug-search-cache.repository.js', () => ({
+    getCachedDrugIds,
+    saveSearchResult
 }));
 
 jest.unstable_mockModule('../repository/interaction.repository.js', () => ({
@@ -38,9 +58,16 @@ describe('drug service', () => {
     beforeEach(() => {
         createVector.mockReset();
         fetchAnaloguesFromFDA.mockReset();
+        findDailyMedDrug.mockReset().mockResolvedValue(null);
+        resolveIngredientFromPubChem.mockReset().mockResolvedValue(null);
+        indexFdaPassages.mockReset();
         createDrug.mockReset();
+        upsertInternationalDrug.mockReset();
         getDrug.mockReset();
+        getDrugsByIds.mockReset();
         getDrugByName.mockReset();
+        getCachedDrugIds.mockReset();
+        saveSearchResult.mockReset();
         searchInteractionsByText.mockReset();
         updateDrug.mockReset();
     });
@@ -57,9 +84,210 @@ describe('drug service', () => {
         await expect(getSimilarDrugs('aspirin')).resolves.toEqual([localDrug]);
         expect(createVector).not.toHaveBeenCalled();
         expect(createDrug).not.toHaveBeenCalled();
+        expect(saveSearchResult).toHaveBeenCalledWith('aspirin', [localDrug]);
+        expect(fetchAnaloguesFromFDA).not.toHaveBeenCalled();
     });
 
-    test('uses the most relevant local match for FDA analogue search', async () => {
+    test('stores a DailyMed drug with its source when FDA has no label', async () => {
+        getDrugByName.mockResolvedValueOnce([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([]);
+        const officialDrug = {
+            name: 'warfarin',
+            activeIngredient: 'warfarin',
+            source: 'DailyMed (NLM)',
+            sourceUrl: 'https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=label-id'
+        };
+        const savedDrug = {_id: 'drug-1', name: 'warfarin', guidelines: officialDrug};
+        findDailyMedDrug.mockResolvedValueOnce(officialDrug);
+        upsertInternationalDrug.mockResolvedValueOnce(savedDrug);
+
+        await expect(getSimilarDrugs('warfarin')).resolves.toEqual([savedDrug]);
+        expect(upsertInternationalDrug).toHaveBeenCalledWith(officialDrug);
+        expect(saveSearchResult).toHaveBeenCalledWith('warfarin', [savedDrug]);
+    });
+
+    test('resolves Dimedrol to diphenhydramine and verifies it against an FDA ingredient label', async () => {
+        const fdaLabel = {
+            id: 'label-1',
+            openfda: {
+                brand_name: ['Diphenhydramine HCl'],
+                generic_name: ['DIPHENHYDRAMINE HCL']
+            },
+            warnings: ['FDA warning text']
+        };
+        const alias = {_id: 'alias-1', name: 'Dimedrol', activeIngredient: 'DIPHENHYDRAMINE'};
+        const analogue = {_id: 'drug-2', name: 'Diphenhydramine HCl', activeIngredient: 'DIPHENHYDRAMINE HCL'};
+        getDrugByName.mockResolvedValue([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([]).mockResolvedValueOnce([fdaLabel]);
+        resolveIngredientFromPubChem.mockResolvedValueOnce({
+            activeIngredient: 'DIPHENHYDRAMINE',
+            source: 'PubChem (NIH)',
+            sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/8980'
+        });
+        upsertInternationalDrug.mockResolvedValueOnce(alias);
+        createVector.mockResolvedValueOnce([0.1]);
+        createDrug.mockResolvedValueOnce(analogue);
+
+        const result = await getSimilarDrugs('Dimedrol');
+
+        expect(fetchAnaloguesFromFDA).toHaveBeenNthCalledWith(1, 'Dimedrol');
+        expect(fetchAnaloguesFromFDA).toHaveBeenNthCalledWith(2, 'DIPHENHYDRAMINE');
+        expect(upsertInternationalDrug).toHaveBeenCalledWith(expect.objectContaining({
+            name: 'Dimedrol',
+            activeIngredient: 'DIPHENHYDRAMINE',
+            source: 'PubChem (NIH)',
+            verificationSource: 'openFDA'
+        }));
+        expect(result).toEqual([alias, analogue]);
+        expect(saveSearchResult).toHaveBeenCalledWith('dimedrol', [alias, analogue]);
+    });
+
+    test('saves a PubChem-only chemical identity without presenting it as label evidence', async () => {
+        getDrugByName.mockResolvedValueOnce([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([]).mockResolvedValueOnce([{
+            openfda: {generic_name: ['OTHER INGREDIENT AND DIPHENHYDRAMINE']}
+        }]);
+        resolveIngredientFromPubChem.mockResolvedValueOnce({
+            activeIngredient: 'DIPHENHYDRAMINE',
+            source: 'PubChem (NIH)',
+            sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/8980'
+        });
+
+        const alias = {_id: 'alias-1', name: 'Dimedrol', activeIngredient: 'DIPHENHYDRAMINE'};
+        upsertInternationalDrug.mockResolvedValueOnce(alias);
+
+        await expect(getSimilarDrugs('Dimedrol')).resolves.toEqual([alias]);
+        expect(upsertInternationalDrug).toHaveBeenCalledWith(expect.not.objectContaining({
+            verificationSource: expect.any(String)
+        }));
+    });
+
+    test('uses a DailyMed ingredient label when FDA has no matching label', async () => {
+        getDrugByName.mockResolvedValueOnce([]);
+        fetchAnaloguesFromFDA.mockResolvedValue([]);
+        findDailyMedDrug.mockResolvedValueOnce(null).mockResolvedValueOnce({
+            source: 'DailyMed (NLM)',
+            sourceUrl: 'https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=verified'
+        });
+        resolveIngredientFromPubChem.mockResolvedValueOnce({
+            activeIngredient: 'DIPHENHYDRAMINE',
+            source: 'PubChem (NIH)',
+            sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/8980'
+        });
+        const alias = {_id: 'alias-1', name: 'Dimedrol', activeIngredient: 'DIPHENHYDRAMINE'};
+        upsertInternationalDrug.mockResolvedValueOnce(alias);
+
+        await expect(getSimilarDrugs('Dimedrol')).resolves.toEqual([alias]);
+        expect(upsertInternationalDrug).toHaveBeenCalledWith(expect.objectContaining({
+            verificationSource: 'DailyMed (NLM)',
+            verificationUrl: 'https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=verified'
+        }));
+    });
+
+    test('returns an empty result rather than failing when DailyMed is unavailable', async () => {
+        getDrugByName.mockResolvedValueOnce([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([]);
+        findDailyMedDrug.mockRejectedValueOnce(new ExternalServiceError('DailyMed unavailable'));
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        try {
+            await expect(getSimilarDrugs('unknown-drug')).resolves.toEqual([]);
+            expect(saveSearchResult).toHaveBeenCalledWith(
+                'unknown-drug', [], DRUG_SEARCH_FALLBACK_CACHE_TTL_MS
+            );
+        } finally {
+            consoleSpy.mockRestore();
+        }
+    });
+
+    test('returns cached search results without calling FDA again', async () => {
+        const localDrug = {_id: 'drug-1', name: 'Warfarin', activeIngredient: 'WARFARIN'};
+        const analogue = {_id: 'drug-2', name: 'JANTOVEN', activeIngredient: 'WARFARIN'};
+        getCachedDrugIds.mockResolvedValueOnce(['drug-1', 'drug-2']);
+        getDrugsByIds.mockResolvedValueOnce([localDrug, analogue]);
+
+        const results = await getSimilarDrugs(' WARFARIN ');
+
+        expect(results.map((drug) => drug.name)).toEqual(['Warfarin', 'JANTOVEN']);
+        expect(getCachedDrugIds).toHaveBeenCalledWith('warfarin');
+        expect(getDrugByName).not.toHaveBeenCalled();
+        expect(fetchAnaloguesFromFDA).not.toHaveBeenCalled();
+        expect(createVector).not.toHaveBeenCalled();
+        expect(saveSearchResult).not.toHaveBeenCalled();
+    });
+
+    test('reuses an empty search result during a brief FDA outage', async () => {
+        getCachedDrugIds.mockResolvedValueOnce([]);
+
+        await expect(getSimilarDrugs('unknown')).resolves.toEqual([]);
+
+        expect(getDrugByName).not.toHaveBeenCalled();
+        expect(fetchAnaloguesFromFDA).not.toHaveBeenCalled();
+    });
+
+    test('finds tibolone without a hardcoded catalog when PubChem confirms its identity', async () => {
+        getDrugByName.mockResolvedValueOnce([]);
+        fetchAnaloguesFromFDA.mockResolvedValue([]);
+        resolveIngredientFromPubChem.mockResolvedValueOnce({
+            activeIngredient: 'tibolone',
+            source: 'PubChem (NIH)',
+            sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/444008'
+        });
+        upsertInternationalDrug.mockImplementationOnce(async (entry) => ({
+            _id: 'tibolone-id',
+            name: entry.name,
+            activeIngredient: entry.activeIngredient,
+            guidelines: {source: entry.source, sourceUrl: entry.sourceUrl}
+        }));
+
+        const result = await getSimilarDrugs('TIBOLONE');
+
+        expect(result).toEqual([expect.objectContaining({
+            name: 'TIBOLONE',
+            activeIngredient: 'tibolone',
+            guidelines: expect.objectContaining({source: 'PubChem (NIH)'})
+        })]);
+        expect(fetchAnaloguesFromFDA).toHaveBeenCalledWith('tibolone');
+        expect(saveSearchResult).toHaveBeenCalledWith('tibolone', result);
+    });
+
+    test('finds Suprastin through the same general PubChem resolution', async () => {
+        getDrugByName.mockResolvedValueOnce([]);
+        fetchAnaloguesFromFDA.mockResolvedValue([]);
+        resolveIngredientFromPubChem.mockResolvedValueOnce({
+            activeIngredient: 'chloropyramine',
+            source: 'PubChem (NIH)',
+            sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/80311'
+        });
+        upsertInternationalDrug.mockImplementationOnce(async (entry) => ({
+            _id: 'suprastin-id',
+            name: entry.name,
+            activeIngredient: entry.activeIngredient,
+            guidelines: {source: entry.source, sourceUrl: entry.sourceUrl}
+        }));
+
+        const result = await getSimilarDrugs('suprastin');
+
+        expect(result).toEqual([expect.objectContaining({
+            name: 'suprastin',
+            activeIngredient: 'chloropyramine',
+            guidelines: expect.objectContaining({source: 'PubChem (NIH)'})
+        })]);
+        expect(fetchAnaloguesFromFDA).toHaveBeenCalledWith('chloropyramine');
+    });
+
+    test('refreshes a cached search when a referenced drug is missing', async () => {
+        const localDrug = {_id: 'drug-1', name: 'Warfarin', activeIngredient: 'WARFARIN'};
+        getDrugByName.mockResolvedValueOnce([localDrug]);
+        getCachedDrugIds.mockResolvedValueOnce(['drug-1', 'drug-2']);
+        getDrugsByIds.mockResolvedValueOnce([localDrug]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([]);
+
+        await expect(getSimilarDrugs('warfarin')).resolves.toEqual([localDrug]);
+        expect(fetchAnaloguesFromFDA).not.toHaveBeenCalled();
+    });
+
+    test('returns local matches without checking external sources', async () => {
         getDrugByName.mockResolvedValueOnce([
             {
                 _id: 'combo-drug',
@@ -76,19 +304,11 @@ describe('drug service', () => {
 
         await getSimilarDrugs('amoxicillin');
 
-        expect(fetchAnaloguesFromFDA).toHaveBeenCalledWith('AMOXICILLIN');
+        expect(fetchAnaloguesFromFDA).not.toHaveBeenCalled();
     });
 
-    test('ranks single-ingredient FDA analogues before combination products', async () => {
-        getDrugByName
-            .mockResolvedValueOnce([
-                {
-                    _id: 'local-metformin',
-                    name: 'METFORMIN',
-                    activeIngredient: 'METFORMIN'
-                }
-            ])
-            .mockResolvedValue([]);
+    test('does not present combination products as an exact ingredient result', async () => {
+        getDrugByName.mockResolvedValue([]);
         fetchAnaloguesFromFDA.mockResolvedValueOnce([
             {
                 openfda: {
@@ -112,11 +332,7 @@ describe('drug service', () => {
 
         const result = await getSimilarDrugs('metformin');
 
-        expect(result.map((drug) => drug.name)).toEqual([
-            'METFORMIN',
-            'METFORMIN HYDROCHLORIDE',
-            'ZITUVIMET'
-        ]);
+        expect(result.map((drug) => drug.name)).toEqual(['METFORMIN HYDROCHLORIDE']);
     });
 
     test('saves FDA analogue when only description text is available', async () => {
@@ -146,6 +362,7 @@ describe('drug service', () => {
                 embedding: [0.1, 0.2, 0.3]
             })
         }));
+        expect(saveSearchResult).toHaveBeenCalledWith('testdrug', [{name: 'TestDrug'}]);
     });
 
     test('limits long FDA label text before creating an embedding', async () => {

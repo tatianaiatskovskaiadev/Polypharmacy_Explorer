@@ -5,7 +5,8 @@ const getDrugsByIds = jest.fn();
 const checkInteractionRepository = jest.fn();
 const getInteractionPair = jest.fn();
 const toCanonicalPair = jest.fn((drugIdA, drugIdB) => [String(drugIdA), String(drugIdB)].sort());
-const fetchRawInteraction = jest.fn();
+const fetchInteractionFromFDA = jest.fn();
+const fetchInteractionFromDailyMed = jest.fn();
 const normalizeInteractionText = jest.fn();
 const upsertInteraction = jest.fn();
 
@@ -21,8 +22,10 @@ jest.unstable_mockModule('../repository/interaction.repository.js', () => ({
 }));
 
 jest.unstable_mockModule('./fda.service.js', () => ({
-    fetchRawInteraction
+    fetchInteractionFromFDA
 }));
+
+jest.unstable_mockModule('./dailymed.service.js', () => ({fetchInteractionFromDailyMed}));
 
 jest.unstable_mockModule('./ai.service.js', () => ({
     normalizeInteractionText
@@ -44,7 +47,8 @@ describe('interaction service', () => {
         checkInteractionRepository.mockReset();
         getInteractionPair.mockReset();
         toCanonicalPair.mockClear();
-        fetchRawInteraction.mockReset();
+        fetchInteractionFromFDA.mockReset();
+        fetchInteractionFromDailyMed.mockReset().mockResolvedValue(null);
         normalizeInteractionText.mockReset();
         upsertInteraction.mockReset();
     });
@@ -62,12 +66,12 @@ describe('interaction service', () => {
 
         getDrugsByIds.mockResolvedValueOnce(drugs);
         getInteractionPair.mockResolvedValue(null);
-        fetchRawInteraction.mockImplementation(async () => {
+        fetchInteractionFromFDA.mockImplementation(async () => {
             inFlight++;
             maxInFlight = Math.max(maxInFlight, inFlight);
             await deferred.promise;
             inFlight--;
-            return 'FDA interaction text';
+            return {text: 'FDA interaction text', source: 'openFDA', sourceUrl: 'https://api.fda.gov/example'};
         });
         normalizeInteractionText.mockResolvedValue({
             riskLevel: 'moderate',
@@ -82,13 +86,13 @@ describe('interaction service', () => {
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(fetchRawInteraction).toHaveBeenCalledTimes(3);
+        expect(fetchInteractionFromFDA).toHaveBeenCalledTimes(3);
         expect(maxInFlight).toBe(3);
 
         deferred.resolve();
         await resultPromise;
 
-        expect(fetchRawInteraction).toHaveBeenCalledTimes(6);
+        expect(fetchInteractionFromFDA).toHaveBeenCalledTimes(6);
         expect(maxInFlight).toBe(3);
     });
 
@@ -101,9 +105,9 @@ describe('interaction service', () => {
         };
 
         getInteractionPair.mockResolvedValue(null);
-        fetchRawInteraction.mockImplementation(async () => {
+        fetchInteractionFromFDA.mockImplementation(async () => {
             await deferred.promise;
-            return 'FDA interaction text';
+            return {text: 'FDA interaction text', source: 'openFDA', sourceUrl: 'https://api.fda.gov/example'};
         });
         normalizeInteractionText.mockResolvedValue({
             riskLevel: 'moderate',
@@ -118,7 +122,7 @@ describe('interaction service', () => {
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(fetchRawInteraction).toHaveBeenCalledTimes(1);
+        expect(fetchInteractionFromFDA).toHaveBeenCalledTimes(1);
         expect(normalizeInteractionText).not.toHaveBeenCalled();
 
         deferred.resolve();
@@ -137,14 +141,14 @@ describe('interaction service', () => {
             _id: 'interaction-1',
             drugA: 'drug-a',
             drugB: 'drug-b',
-            analysisVersion: 3
+            analysisVersion: 4
         };
 
         getInteractionPair.mockResolvedValueOnce(cachedInteraction);
 
         await expect(syncInteraction('drug-a', 'drug-b', 'A', 'B')).resolves.toBe(cachedInteraction);
 
-        expect(fetchRawInteraction).not.toHaveBeenCalled();
+        expect(fetchInteractionFromFDA).not.toHaveBeenCalled();
         expect(normalizeInteractionText).not.toHaveBeenCalled();
         expect(upsertInteraction).not.toHaveBeenCalled();
     });
@@ -158,7 +162,11 @@ describe('interaction service', () => {
         };
 
         getInteractionPair.mockResolvedValueOnce(cachedInteraction);
-        fetchRawInteraction.mockResolvedValueOnce('FDA text with required dose reduction');
+        fetchInteractionFromFDA.mockResolvedValueOnce({
+            text: 'FDA text with required dose reduction',
+            source: 'openFDA',
+            sourceUrl: 'https://api.fda.gov/example'
+        });
         normalizeInteractionText.mockResolvedValueOnce({
             riskLevel: 'major',
             description: 'Dose reduction is required.',
@@ -178,7 +186,10 @@ describe('interaction service', () => {
         expect(upsertInteraction).toHaveBeenCalledWith(expect.objectContaining({
             riskLevel: 'major',
             colorCode: 'orange',
-            analysisVersion: 3
+            analysisVersion: 4,
+            source: 'openFDA',
+            sourceUrl: 'https://api.fda.gov/example',
+            sourceText: 'FDA text with required dose reduction'
         }));
     });
 
@@ -191,11 +202,63 @@ describe('interaction service', () => {
         };
 
         getInteractionPair.mockResolvedValueOnce(cachedInteraction);
-        fetchRawInteraction.mockResolvedValueOnce(null);
+        fetchInteractionFromFDA.mockResolvedValueOnce(null);
 
         await expect(syncInteraction('drug-a', 'drug-b', 'A', 'B')).resolves.toBe(cachedInteraction);
         expect(normalizeInteractionText).not.toHaveBeenCalled();
         expect(upsertInteraction).not.toHaveBeenCalled();
+    });
+
+    test('uses DailyMed when FDA has no pair evidence and saves its provenance', async () => {
+        getInteractionPair.mockResolvedValueOnce(null);
+        fetchInteractionFromFDA.mockResolvedValueOnce(null);
+        fetchInteractionFromDailyMed.mockResolvedValueOnce({
+            text: 'Fluconazole may enhance the effect of warfarin.',
+            source: 'DailyMed (NLM)',
+            sourceUrl: 'https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=example'
+        });
+        normalizeInteractionText.mockResolvedValueOnce({
+            riskLevel: 'moderate',
+            description: 'Monitor anticoagulation.',
+            actionRequired: 'Monitor closely.'
+        });
+        upsertInteraction.mockResolvedValueOnce({riskLevel: 'moderate'});
+
+        await syncInteraction('drug-a', 'drug-b', 'fluconazole', 'warfarin');
+
+        expect(upsertInteraction).toHaveBeenCalledWith(expect.objectContaining({
+            source: 'DailyMed (NLM)',
+            sourceUrl: 'https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=example',
+            sourceText: 'Fluconazole may enhance the effect of warfarin.',
+            sourceRetrievedAt: expect.any(Date)
+        }));
+    });
+
+    test('does not create an interaction without explicit evidence from any source', async () => {
+        getInteractionPair.mockResolvedValueOnce(null);
+        fetchInteractionFromFDA.mockResolvedValueOnce(null);
+        await expect(syncInteraction('drug-a', 'drug-b', 'A', 'B')).resolves.toBeNull();
+        expect(fetchInteractionFromDailyMed).toHaveBeenCalled();
+        expect(normalizeInteractionText).not.toHaveBeenCalled();
+        expect(upsertInteraction).not.toHaveBeenCalled();
+    });
+
+    test('continues to DailyMed when FDA is unavailable', async () => {
+        getInteractionPair.mockResolvedValueOnce(null);
+        fetchInteractionFromFDA.mockRejectedValueOnce(new ExternalServiceError('FDA unavailable'));
+        fetchInteractionFromDailyMed.mockResolvedValueOnce({
+            text: 'Warfarin and fluconazole interaction.',
+            source: 'DailyMed (NLM)',
+            sourceUrl: 'https://dailymed.nlm.nih.gov/example'
+        });
+        normalizeInteractionText.mockResolvedValueOnce({
+            riskLevel: 'moderate', description: 'Interaction.', actionRequired: 'Monitor.'
+        });
+        upsertInteraction.mockResolvedValueOnce({riskLevel: 'moderate'});
+
+        await syncInteraction('drug-a', 'drug-b', 'warfarin', 'fluconazole');
+
+        expect(upsertInteraction).toHaveBeenCalledWith(expect.objectContaining({source: 'DailyMed (NLM)'}));
     });
 
     test('continues interaction check when one external pair sync is rate limited', async () => {
@@ -209,7 +272,7 @@ describe('interaction service', () => {
 
         getDrugsByIds.mockResolvedValueOnce(drugs);
         getInteractionPair.mockResolvedValue(null);
-        fetchRawInteraction.mockRejectedValueOnce(new ExternalServiceError('openFDA responded with 500 Internal Server Error'));
+        fetchInteractionFromFDA.mockRejectedValueOnce(new ExternalServiceError('openFDA responded with 500 Internal Server Error'));
         checkInteractionRepository.mockResolvedValue(cachedInteractions);
 
         await expect(checkInteraction(['drug-a', 'drug-b'])).resolves.toEqual({

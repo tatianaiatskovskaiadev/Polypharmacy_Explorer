@@ -21,8 +21,13 @@ const ModalWindow = ({modalConfig, close, interaction}: Props) => {
             <div>{interaction.description}</div>
             <div className="mt-2">{interaction.actionRequired}</div>
             <div className="mt-2 text-xs text-gray-500">
-                AI-generated summary of FDA label text. Not medical advice.
+                AI-generated summary of {interaction.source ?? 'drug label'} text. Not medical advice.
             </div>
+            {interaction.sourceUrl && (
+                <a href={interaction.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-700 underline">
+                    View source
+                </a>
+            )}
             <button
                 className={'border border-gray-300 rounded-md p-2 mt-2'}
                 onClick={close}>Close</button>

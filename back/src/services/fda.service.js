@@ -79,19 +79,30 @@ const fetchDirectionalInteraction = async (labelDrug, interactingDrug) => {
             1
         );
 
-        const interactionText = results[0]?.drug_interactions?.[0];
+        const label = results[0];
+        const interactionText = label?.drug_interactions?.[0];
         if (interactionText) {
-            return interactionText;
+            return {
+                text: interactionText,
+                source: 'openFDA',
+                sourceUrl: `${FDA_LABEL_URL}?search=${encodeURIComponent(
+                    label.id ? `id:${label.id}` : `openfda.generic_name:${quote(labelDrug)}`
+                )}`
+            };
         }
     }
 
     return null;
 };
 
-export const fetchRawInteraction = async (drugA, drugB) => {
+export const fetchInteractionFromFDA = async (drugA, drugB) => {
     return await fetchDirectionalInteraction(drugA, drugB)
         ?? await fetchDirectionalInteraction(drugB, drugA);
 }
+
+export const fetchRawInteraction = async (drugA, drugB) => (
+    (await fetchInteractionFromFDA(drugA, drugB))?.text ?? null
+);
 
 export const fetchAnaloguesFromFDA = async (activeIngredient) => {
     try {

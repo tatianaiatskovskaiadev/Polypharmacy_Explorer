@@ -22,7 +22,31 @@ const List = ({data, isLoading, isError, errorMessage, onAdd} : Props) => {
                     onClick={() => onAdd(item)}
                     className="p-2 cursor-pointer hover:bg-blue-50 transition-colors flex justify-between gap-4"
                 >
-                    <span><strong>{item.name}</strong> ({item.activeIngredient})</span>
+                    <span>
+                        <strong>{item.name}</strong> ({item.activeIngredient})
+                        {item.guidelines?.sourceUrl ? (
+                            <small className="block text-gray-600">
+                                Source: <a
+                                    className="underline"
+                                    href={item.guidelines.sourceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(event) => event.stopPropagation()}
+                                >{item.guidelines.source}</a>.
+                                {item.guidelines.verificationUrl ? (
+                                    <> Ingredient label: <a
+                                        className="underline"
+                                        href={item.guidelines.verificationUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(event) => event.stopPropagation()}
+                                    >{item.guidelines.verificationSource}</a>.</>
+                                ) : item.guidelines.source === 'PubChem (NIH)'
+                                    ? ' Chemical identity only; medicinal product and interactions are not verified.'
+                                    : item.guidelines.source !== 'FDA' ? ' FDA label evidence is unavailable.' : null}
+                            </small>
+                        ) : null}
+                    </span>
                     <span className="text-blue-500 font-bold">+</span>
                 </li>
             ))}

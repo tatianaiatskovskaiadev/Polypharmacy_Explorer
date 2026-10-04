@@ -4,7 +4,10 @@ export interface Drug {
     activeIngredient: string;
     guidelines: {
         source: string;
-        originalText: string;
+        sourceUrl?: string;
+        verificationSource?: string;
+        verificationUrl?: string;
+        originalText?: string;
     };
     // Present only in symptom search results (vector similarity)
     score?: number;
@@ -20,6 +23,8 @@ export type Interaction = {
     colorCode: string;
     description: string;
     actionRequired: string;
+    source?: string;
+    sourceUrl?: string;
 };
 
 export type CheckInteractionsRequest = {
