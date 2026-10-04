@@ -321,6 +321,13 @@ cd back
 npm test
 ```
 
+Run frontend layout and evidence utility tests:
+
+```bash
+cd front
+npm test
+```
+
 Current backend test coverage focuses on:
 
 - request validation contract
@@ -343,10 +350,11 @@ Latest local validation:
 | Command | Result |
 | --- | --- |
 | `cd back && npm test` | Passed: 26 suites, 110 tests |
+| `cd front && npm test` | Passed: 3 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed |
 
-GitHub Actions runs backend tests and frontend build/lint on pushes to `main` and on pull requests.
+GitHub Actions runs backend tests and frontend tests/build/lint on pushes to `main` and on pull requests.
 
 ## Docker
 
@@ -392,7 +400,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - API requests have generated IDs and JSON completion/error logs without URLs, query strings, bodies, or headers. Service-level logs, metrics, and tracing are not fully implemented yet.
 - Docker Compose is not included yet.
 - CI exists for backend tests and frontend build/lint, but deployment/CD and Docker image build checks are not configured yet.
-- Frontend UX covers removal, loading, common API errors, and partial interaction failure details, but still needs richer empty states, per-pair progress, and more polished interaction details.
+- Frontend UX covers removal, loading, common API errors, partial interaction failure details, and an in-page graph container, but still needs more component-level tests, richer empty states, per-pair progress, and more polished interaction details.
 - MongoDB Atlas Vector Search index setup must be configured outside the repository.
 - RAG only covers FDA labels indexed through drug search; older cached drugs need to be searched again. Passage indexing is capped per label, so long labels may have incomplete coverage.
 - PubChem-only chemical identities and DailyMed-only entries do not create FDA passages, so RAG and agent answers
@@ -405,6 +413,6 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 1. Harden account delivery with a deployment-ready domain and proxy configuration, plus mail-worker monitoring and alerting.
 2. Strengthen evidence presentation and evaluation. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; test insufficient-evidence behavior and citation quality against a fixed set of example questions.
 3. Improve reliability and observability. Extend structured logging to service failures and add request/cost metrics. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
-4. Add frontend regression tests and polish the graph layout, empty states, per-pair progress, and interaction details. Fix the graph's viewport-sized container within the page layout.
+4. Expand frontend regression tests to component flows and polish empty states, per-pair progress, and interaction details.
 5. Define AWS infrastructure as code for S3, CloudFront, Route 53, an API runtime, TLS, secrets, and monitoring. Extend GitHub Actions with Docker build, staging deployment, and post-deployment checks.
 6. Add a local multi-service setup and consider backend TypeScript migration and `/api/v1` versioning after the API contract stabilizes.

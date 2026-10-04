@@ -137,15 +137,14 @@ const GraphView = ({
     };
 
     return (
-        <div
-            className="relative"
-            style={{
-                width: "100vw",
-                height: "100vh",
-            }}
-        >
+        <section aria-label="Drug interaction graph" className="relative h-[65vh] min-h-80 max-h-[42rem] w-full min-w-0 overflow-hidden rounded-md border border-gray-300">
+            {data.length === 0 ? (
+                <div className="flex h-full items-center justify-center p-6 text-center text-sm text-gray-600">
+                    Search for a drug and add it to see the interaction graph.
+                </div>
+            ) : null}
             {data.length > 1 || pubChemOnlyDrugs.length > 0 ? (
-                <div className="absolute z-10 m-3 max-w-md rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900 shadow-sm">
+                <div className="absolute top-3 right-3 left-3 z-10 max-h-[40%] max-w-md overflow-y-auto rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900 shadow-sm">
                     {pubChemOnlyDrugs.length > 0 ? (
                         <p>
                             PubChem only: {pubChemOnlyDrugs.map((drug) => drug.name).join(', ')}. Chemical identity does not verify a medicinal product or its interactions. No FDA label passages are available for these entries.
@@ -158,14 +157,16 @@ const GraphView = ({
                     ) : null}
                 </div>
             ) : null}
-            <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                nodesConnectable={false}
-                fitView
-                onEdgeClick={handleEdgeClick}
-            />
+            {data.length > 0 ? (
+                <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    nodesConnectable={false}
+                    fitView
+                    onEdgeClick={handleEdgeClick}
+                />
+            ) : null}
 
             <ModalWindow
                 interaction={selectedInteraction}
@@ -175,7 +176,7 @@ const GraphView = ({
                     setSelectedInteraction(null);
                 }}
             />
-        </div>
+        </section>
     );
 };
 
