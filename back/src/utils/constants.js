@@ -6,6 +6,7 @@ export const ENV_VARS = {
     registrationCode: 'REGISTRATION_CODE',
     appUrl: 'APP_URL',
     mailMode: 'MAIL_MODE',
+    mailWorkerAutostart: 'MAIL_WORKER_AUTOSTART',
     smtpHost: 'SMTP_HOST',
     smtpPort: 'SMTP_PORT',
     smtpUser: 'SMTP_USER',

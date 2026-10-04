@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
-import config, {validateRuntimeConfig} from "./configuration/config.js";
+import config, {shouldAutostartMailWorker, validateRuntimeConfig} from "./configuration/config.js";
 import app from "./app.js";
+import {startMailWorker} from './services/mail-queue.service.js';
 
 async function startServer() {
     try {
@@ -11,7 +12,10 @@ async function startServer() {
         console.error('Failed connection to MongoDB: ', e);
         process.exit(1);
     }
-    app.listen(config.port, () => console.log(`Server running on port ${config.port}. Press Ctrl+C to stop.`));
+    app.listen(config.port, () => {
+        console.log(`Server running on port ${config.port}. Press Ctrl+C to stop.`);
+        if (shouldAutostartMailWorker()) startMailWorker();
+    });
 }
 
 startServer();

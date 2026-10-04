@@ -3,7 +3,8 @@ import {promisify} from 'util';
 import {User} from '../models/User.model.js';
 import {Session} from '../models/Session.model.js';
 import {AuthToken} from '../models/AuthToken.model.js';
-import {sendActionEmail} from './mail.service.js';
+import {MailJob} from '../models/MailJob.model.js';
+import {queueActionEmail} from './mail-queue.service.js';
 import {BadRequestError, ConflictError, UnauthorizedError} from '../utils/errors.js';
 
 const scrypt = promisify(scryptCallback);
@@ -32,9 +33,10 @@ const verifyPassword = async (password, stored) => {
     return timingSafeEqual(expected, actual);
 };
 
-export const createUser = async (email, password) => {
+export const createUser = async (email, password, session) => {
     try {
-        const user = await User.create({email: normalizeEmail(email), passwordHash: await hashPassword(password), emailVerifiedAt: null});
+        const data = {email: normalizeEmail(email), passwordHash: await hashPassword(password), emailVerifiedAt: null};
+        const user = session ? (await User.create([data], {session}))[0] : await User.create(data);
         return publicUser(user);
     } catch (error) {
         if (error.code === 11000) throw new ConflictError('An account with this email already exists');
@@ -97,21 +99,8 @@ export const matchesCsrfToken = (session, token) => {
     return timingSafeEqual(Buffer.from(session.csrfToken, 'hex'), Buffer.from(token, 'hex'));
 };
 
-const issueActionToken = async (user, purpose) => {
-    const token = randomBytes(32).toString('hex');
-    const durationMs = purpose === 'verify-email' ? 24 * 60 * 60 * 1000 : 30 * 60 * 1000;
-    await AuthToken.deleteMany({userId: user.id, purpose});
-    await AuthToken.create({
-        userId: user.id,
-        purpose,
-        tokenHash: digest(token),
-        expiresAt: new Date(Date.now() + durationMs)
-    });
-    await sendActionEmail(user.email, purpose, token);
-};
-
-export const sendVerificationEmail = async (user) => {
-    if (!user.emailVerified) await issueActionToken(user, 'verify-email');
+export const sendVerificationEmail = async (user, session) => {
+    if (!user.emailVerified) await queueActionEmail(user.id, 'verify-email', session);
 };
 
 export const resendVerificationEmail = async (userId) => {
@@ -125,11 +114,12 @@ export const verifyEmail = async (token) => {
     });
     if (!action) throw new BadRequestError('Invalid or expired verification link');
     await User.updateOne({_id: action.userId}, {$set: {emailVerifiedAt: new Date()}});
+    await AuthToken.deleteMany({userId: action.userId, purpose: 'verify-email'});
 };
 
 export const requestPasswordReset = async (email) => {
     const user = await User.findOne({email: normalizeEmail(email)});
-    if (user) await issueActionToken(publicUser(user), 'reset-password');
+    if (user) await queueActionEmail(user._id, 'reset-password');
 };
 
 export const resetPassword = async (token, password) => {
@@ -139,5 +129,6 @@ export const resetPassword = async (token, password) => {
     if (!action) throw new BadRequestError('Invalid or expired password reset link');
     await User.updateOne({_id: action.userId}, {$set: {passwordHash: await hashPassword(password)}});
     await Session.deleteMany({userId: action.userId});
+    await MailJob.updateMany({userId: action.userId, purpose: 'reset-password', state: 'pending'}, {$set: {state: 'failed'}});
     await AuthToken.deleteMany({userId: action.userId, purpose: 'reset-password'});
 };

@@ -40,12 +40,19 @@ export const isLocalRuntime = () => {
     return !nodeEnv || LOCAL_NODE_ENV_VALUES.includes(nodeEnv);
 }
 
+export const shouldAutostartMailWorker = () => isLocalRuntime() &&
+    process.env[ENV_VARS.mailWorkerAutostart] !== 'false';
+
 export const validateRuntimeConfig = () => {
     required(ENV_VARS.mongoUri);
     required(ENV_VARS.dbName);
     required(ENV_VARS.openAiApiKey);
 
     const mailMode = process.env[ENV_VARS.mailMode] || 'console';
+    if (process.env[ENV_VARS.mailWorkerAutostart] &&
+        !['true', 'false'].includes(process.env[ENV_VARS.mailWorkerAutostart])) {
+        throw new Error('MAIL_WORKER_AUTOSTART must be true or false');
+    }
     if (!['console', 'smtp'].includes(mailMode)) throw new Error('MAIL_MODE must be console or smtp');
     if (!isLocalRuntime() && mailMode !== 'smtp') throw new Error('MAIL_MODE must be smtp outside local runtime');
     if (mailMode === 'smtp') {

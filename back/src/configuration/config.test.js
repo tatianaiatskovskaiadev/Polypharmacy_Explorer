@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, jest, test} from '@jest/globals';
 import {ENV_VARS} from '../utils/constants.js';
-import {validateRuntimeConfig} from './config.js';
+import {shouldAutostartMailWorker, validateRuntimeConfig} from './config.js';
 
 describe('runtime config validation', () => {
     const originalEnv = {...process.env};
@@ -43,6 +43,16 @@ describe('runtime config validation', () => {
 
         expect(() => validateRuntimeConfig()).not.toThrow();
         expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    test('can disable the local mail worker for restart testing', () => {
+        process.env[ENV_VARS.mailWorkerAutostart] = 'false';
+        expect(shouldAutostartMailWorker()).toBe(false);
+        expect(() => validateRuntimeConfig()).not.toThrow();
+        process.env[ENV_VARS.mailWorkerAutostart] = 'true';
+        expect(shouldAutostartMailWorker()).toBe(true);
+        process.env[ENV_VARS.mailWorkerAutostart] = 'invalid';
+        expect(() => validateRuntimeConfig()).toThrow('MAIL_WORKER_AUTOSTART must be true or false');
     });
 
     test('requires configured SMTP delivery in production', () => {

@@ -7,12 +7,12 @@ const sessionDeleteOne = jest.fn();
 const sessionFind = jest.fn();
 const sessionFindOneAndDelete = jest.fn();
 const sessionDeleteMany = jest.fn();
-const authTokenCreate = jest.fn();
 const authTokenDeleteMany = jest.fn();
 const authTokenFindOneAndDelete = jest.fn();
+const mailJobUpdateMany = jest.fn();
 const userFindById = jest.fn();
 const userUpdateOne = jest.fn();
-const sendActionEmail = jest.fn();
+const queueActionEmail = jest.fn();
 
 jest.unstable_mockModule('../models/User.model.js', () => ({
     User: {create: userCreate, findOne: userFindOne, findById: userFindById, updateOne: userUpdateOne}
@@ -21,9 +21,10 @@ jest.unstable_mockModule('../models/Session.model.js', () => ({
     Session: {create: sessionCreate, deleteOne: sessionDeleteOne, deleteMany: sessionDeleteMany, find: sessionFind, findOneAndDelete: sessionFindOneAndDelete}
 }));
 jest.unstable_mockModule('../models/AuthToken.model.js', () => ({
-    AuthToken: {create: authTokenCreate, deleteMany: authTokenDeleteMany, findOneAndDelete: authTokenFindOneAndDelete}
+    AuthToken: {deleteMany: authTokenDeleteMany, findOneAndDelete: authTokenFindOneAndDelete}
 }));
-jest.unstable_mockModule('./mail.service.js', () => ({sendActionEmail}));
+jest.unstable_mockModule('../models/MailJob.model.js', () => ({MailJob: {updateMany: mailJobUpdateMany}}));
+jest.unstable_mockModule('./mail-queue.service.js', () => ({queueActionEmail}));
 
 const {
     authenticateUser, createSession, createUser, deleteSession, listUserSessions, matchesCsrfToken,
@@ -39,12 +40,12 @@ describe('authentication service', () => {
         sessionFind.mockReset();
         sessionFindOneAndDelete.mockReset();
         sessionDeleteMany.mockReset();
-        authTokenCreate.mockReset();
         authTokenDeleteMany.mockReset();
         authTokenFindOneAndDelete.mockReset();
+        mailJobUpdateMany.mockReset();
         userFindById.mockReset();
         userUpdateOne.mockReset();
-        sendActionEmail.mockReset();
+        queueActionEmail.mockReset();
     });
 
     test('normalizes email and hashes passwords before saving', async () => {
@@ -88,29 +89,29 @@ describe('authentication service', () => {
         expect(sessionFindOneAndDelete).toHaveBeenCalledWith({_id: 'session-1', userId: 'user-1'});
     });
 
-    test('issues a hashed verification token and consumes it once', async () => {
+    test('queues verification and consumes its token once', async () => {
         const user = {id: 'user-1', email: 'person@example.com', emailVerified: false};
         await sendVerificationEmail(user);
-        const token = sendActionEmail.mock.calls[0][2];
-        expect(token).toHaveLength(64);
-        expect(authTokenCreate.mock.calls[0][0].tokenHash).not.toBe(token);
-        expect(sendActionEmail).toHaveBeenCalledWith(user.email, 'verify-email', token);
+        expect(queueActionEmail).toHaveBeenCalledWith(user.id, 'verify-email', undefined);
 
         authTokenFindOneAndDelete.mockResolvedValueOnce({userId: user.id}).mockResolvedValueOnce(null);
-        await verifyEmail(token);
+        await verifyEmail('a'.repeat(64));
         expect(userUpdateOne).toHaveBeenCalledWith({_id: user.id}, {$set: {emailVerifiedAt: expect.any(Date)}});
-        await expect(verifyEmail(token)).rejects.toMatchObject({statusCode: 400});
+        expect(authTokenDeleteMany).toHaveBeenCalledWith({userId: user.id, purpose: 'verify-email'});
+        await expect(verifyEmail('a'.repeat(64))).rejects.toMatchObject({statusCode: 400});
     });
 
     test('resets a password and revokes all user sessions', async () => {
         userFindOne.mockResolvedValue({_id: 'user-1', email: 'person@example.com'});
         await requestPasswordReset('PERSON@example.com');
-        const token = sendActionEmail.mock.calls[0][2];
         expect(userFindOne).toHaveBeenCalledWith({email: 'person@example.com'});
-        expect(sendActionEmail).toHaveBeenCalledWith('person@example.com', 'reset-password', token);
+        expect(queueActionEmail).toHaveBeenCalledWith('user-1', 'reset-password');
         authTokenFindOneAndDelete.mockResolvedValue({userId: 'user-1'});
-        await resetPassword(token, 'another-strong-password');
+        await resetPassword('a'.repeat(64), 'another-strong-password');
         expect(userUpdateOne).toHaveBeenCalledWith({_id: 'user-1'}, {$set: {passwordHash: expect.any(String)}});
         expect(sessionDeleteMany).toHaveBeenCalledWith({userId: 'user-1'});
+        expect(mailJobUpdateMany).toHaveBeenCalledWith(
+            {userId: 'user-1', purpose: 'reset-password', state: 'pending'}, {$set: {state: 'failed'}}
+        );
     });
 });

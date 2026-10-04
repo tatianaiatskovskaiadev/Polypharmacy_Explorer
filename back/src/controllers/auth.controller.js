@@ -1,6 +1,7 @@
 import {createHash, timingSafeEqual} from 'crypto';
+import mongoose from 'mongoose';
 import config, {isLocalRuntime} from '../configuration/config.js';
-import {ExternalServiceError} from '../utils/errors.js';
+import {logEvent} from '../middlewares/request-logging.middleware.js';
 import {
     authenticateUser, createSession, createUser, deleteSession, listUserSessions, revokeUserSession,
     requestPasswordReset, resendVerificationEmail, resetPassword, sendVerificationEmail, verifyEmail,
@@ -24,10 +25,10 @@ const matchesRegistrationCode = (value) => {
     return timingSafeEqual(expected, actual);
 };
 
-const startSession = async (res, user, emailDeliveryFailed = false) => {
+const startSession = async (res, user) => {
     const {token, csrfToken} = await createSession(user.id);
     res.cookie(SESSION_COOKIE_NAME, token, cookieOptions());
-    return res.set('Cache-Control', 'no-store').status(200).json({user, csrfToken, ...(emailDeliveryFailed ? {emailDeliveryFailed} : {})});
+    return res.set('Cache-Control', 'no-store').status(200).json({user, csrfToken});
 };
 
 export const register = async (req, res) => {
@@ -35,20 +36,16 @@ export const register = async (req, res) => {
     const claim = localSharedCode ? null : await claimInvitation(req.body.email, req.body.registrationCode);
     let user;
     try {
-        user = await createUser(req.body.email, req.body.password);
+        user = await mongoose.connection.transaction(async (session) => {
+            const created = await createUser(req.body.email, req.body.password, session);
+            await sendVerificationEmail(created, session);
+            return created;
+        });
     } catch (error) {
         if (claim) await releaseInvitation(claim);
         throw error;
     }
-    let emailDeliveryFailed = false;
-    try {
-        await sendVerificationEmail(user);
-    } catch (error) {
-        if (!(error instanceof ExternalServiceError)) throw error;
-        console.error('Verification email delivery failed');
-        emailDeliveryFailed = true;
-    }
-    return startSession(res, user, emailDeliveryFailed);
+    return startSession(res, user);
 };
 
 export const login = async (req, res) => {
@@ -89,17 +86,16 @@ export const confirmEmail = async (req, res) => {
 
 export const resendConfirmationEmail = async (req, res) => {
     await resendVerificationEmail(req.user.id);
-    return res.status(202).json({message: 'If verification is needed, an email has been sent.'});
+    return res.status(202).json({message: 'If verification is needed, an email has been requested.'});
 };
 
 export const forgotPassword = async (req, res) => {
     try {
         await requestPasswordReset(req.body.email);
-    } catch (error) {
-        if (!(error instanceof ExternalServiceError)) throw error;
-        console.error('Password reset email delivery failed');
+    } catch {
+        logEvent('error', 'password_reset_enqueue_failed', {requestId: req.requestId});
     }
-    return res.status(202).json({message: 'If an account exists, a password reset email has been sent.'});
+    return res.status(202).json({message: 'If an account exists, a password reset email has been requested.'});
 };
 
 export const confirmPasswordReset = async (req, res) => {

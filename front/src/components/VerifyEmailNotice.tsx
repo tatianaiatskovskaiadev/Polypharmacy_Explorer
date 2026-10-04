@@ -19,10 +19,10 @@ const VerifyEmailNotice = ({csrfToken, onRefresh}: Props) => {
                 credentials: 'include',
                 headers: {'x-csrf-token': csrfToken}
             });
-            if (!response.ok) throw new Error('Unable to send verification email.');
-            setMessage('Verification email sent. Check your inbox.');
+            if (!response.ok) throw new Error('Unable to request verification email.');
+            setMessage('Verification email requested. Check your inbox shortly.');
         } catch (resendError) {
-            setError(resendError instanceof Error ? resendError.message : 'Unable to send verification email.');
+            setError(resendError instanceof Error ? resendError.message : 'Unable to request verification email.');
         }
     };
 

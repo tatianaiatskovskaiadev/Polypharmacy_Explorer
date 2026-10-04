@@ -11,6 +11,9 @@ const getTransporter = () => {
             port: config.mail.port,
             secure: config.mail.port === 465,
             requireTLS: config.mail.port !== 465,
+            connectionTimeout: 10_000,
+            greetingTimeout: 10_000,
+            socketTimeout: 30_000,
             auth: config.mail.user ? {user: config.mail.user, pass: config.mail.password} : undefined
         });
     }

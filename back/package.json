@@ -8,7 +8,8 @@
     "etl": "node --env-file-if-exists=.env src/scripts/import-registry.js",
     "test": "node --env-file-if-exists=.env --experimental-vm-modules node_modules/jest/bin/jest.js",
     "backfill:normalized-names": "node --env-file-if-exists=.env src/scripts/backfill-normalized-names.js",
-    "invite": "node --env-file-if-exists=.env src/scripts/issue-invitation.js"
+    "invite": "node --env-file-if-exists=.env src/scripts/issue-invitation.js",
+    "mail:worker": "node --env-file-if-exists=.env src/workers/mail.worker.js"
   },
   "keywords": [],
   "author": "Tatiana Iatskovskaia",

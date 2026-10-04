@@ -78,10 +78,9 @@ const AuthGate = () => {
                 const body = await response.json() as {message?: string};
                 throw new Error(body.message ?? 'Unable to sign in.');
             }
-            const {emailDeliveryFailed, ...nextSession} = await response.json() as AuthSession & {emailDeliveryFailed?: boolean};
+            const nextSession = await response.json() as AuthSession;
             dispatch(drugApi.util.resetApiState());
             dispatch(setSession(nextSession));
-            if (emailDeliveryFailed) setError('Could not send the verification email. Please retry below.');
             setPassword('');
             setRegistrationCode('');
         } catch (submitError) {
@@ -103,7 +102,7 @@ const AuthGate = () => {
                 body: JSON.stringify({email})
             });
             if (!response.ok) throw new Error('Unable to request password reset.');
-            setNotice('If an account exists, a password reset email has been sent.');
+            setNotice('If an account exists, a password reset email has been requested.');
             setForgotPassword(false);
         } catch (requestError) {
             setError(requestError instanceof Error ? requestError.message : 'Unable to request password reset.');

@@ -156,7 +156,7 @@ VITE_API_URL=http://localhost:3000
 
 The API stores a hashed random session token in MongoDB and sends the raw token only in a seven-day, HttpOnly cookie (`Secure` in production). `/auth/me` returns the current user and a CSRF token; the SPA includes that token on authenticated POST requests. Login and registration are rate-limited by client IP; costly endpoints are rate-limited by signed-in user. These limits still use process memory and need shared storage before running multiple API instances.
 
-New accounts must verify their email before using drug search or AI endpoints. In local development, `MAIL_MODE=console` prints verification and password-reset links to the backend terminal. For deployment, set `MAIL_MODE=smtp`, `APP_URL` to the HTTPS SPA origin, and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, plus `SMTP_USER` and `SMTP_PASSWORD` when the server requires authentication. Production startup rejects console delivery. Accounts created before email verification was introduced retain access; new accounts have `emailVerifiedAt: null` until verified.
+New accounts must verify their email before using drug search or AI endpoints. Registration writes the user and a mail job in one MongoDB transaction, so MongoDB must support transactions (Atlas or a replica set). The outbox stores only the user ID and message purpose, not raw links or tokens. A worker generates each token immediately before delivery, atomically leases jobs, and retries failures up to five times with exponential backoff. Mail jobs remain available for inspection for seven days. Locally the API starts the worker and `MAIL_MODE=console` prints verification and password-reset links to the backend terminal shortly after a request. Set `MAIL_WORKER_AUTOSTART=false` to run `npm run mail:worker` separately and verify persisted jobs after an API restart without SMTP. In production run `cd back && npm run mail:worker` as a separate long-lived process. Set `MAIL_MODE=smtp`, `APP_URL` to the HTTPS SPA origin, and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, plus `SMTP_USER` and `SMTP_PASSWORD` when the server requires authentication. Production startup rejects console delivery. Accounts created before email verification was introduced retain access; new accounts have `emailVerifiedAt: null` until verified.
 
 ## Setup
 
@@ -342,7 +342,7 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 25 suites, 103 tests |
+| `cd back && npm test` | Passed: 26 suites, 110 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed |
 
@@ -388,7 +388,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - A missing graph edge means no interaction record was found or returned for that pair; it does not prove the combination is safe.
 - Backend is JavaScript while frontend is TypeScript; backend TypeScript migration is a future improvement.
 - AWS deployment is not implemented in this repository; production email delivery requires external SMTP configuration.
-- The optional local development code is shared until rotated. Invitation issuance is a CLI operation; email delivery is not queued or retried after a provider outage.
+- The optional local development code is shared until rotated. Invitation issuance is a CLI operation. Failed mail jobs require an operator to investigate; users can request a new verification or reset email.
 - API requests have generated IDs and JSON completion/error logs without URLs, query strings, bodies, or headers. Service-level logs, metrics, and tracing are not fully implemented yet.
 - Docker Compose is not included yet.
 - CI exists for backend tests and frontend build/lint, but deployment/CD and Docker image build checks are not configured yet.
@@ -402,7 +402,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 
 ## Roadmap
 
-1. Harden account delivery with reliable email delivery and a deployment-ready domain and proxy configuration.
+1. Harden account delivery with a deployment-ready domain and proxy configuration, plus mail-worker monitoring and alerting.
 2. Strengthen evidence presentation and evaluation. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; test insufficient-evidence behavior and citation quality against a fixed set of example questions.
 3. Improve reliability and observability. Extend structured logging to service failures and add request/cost metrics. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
 4. Add frontend regression tests and polish the graph layout, empty states, per-pair progress, and interaction details. Fix the graph's viewport-sized container within the page layout.
