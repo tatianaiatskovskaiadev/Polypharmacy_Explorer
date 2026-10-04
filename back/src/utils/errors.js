@@ -12,6 +12,12 @@ export class UnauthorizedError extends ApiError {
     }
 }
 
+export class BadRequestError extends ApiError {
+    constructor(message = 'Bad request') {
+        super(400, message);
+    }
+}
+
 export class ForbiddenError extends ApiError {
     constructor(message = 'Forbidden') {
         super(403, message);

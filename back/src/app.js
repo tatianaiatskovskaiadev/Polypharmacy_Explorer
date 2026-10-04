@@ -9,7 +9,7 @@ import ragRoutes from './routes/rag.routes.js';
 import agentRoutes from './routes/agent.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import {protectAuthEndpoint, protectExpensiveEndpoint} from "./middlewares/cost-control.middleware.js";
-import {requireAllowedOrigin, requireAuth, requireCsrf} from './middlewares/auth.middleware.js';
+import {requireAllowedOrigin, requireAuth, requireCsrf, requireVerifiedEmail} from './middlewares/auth.middleware.js';
 
 const app = express();
 
@@ -33,10 +33,10 @@ app.get('/health', (req, res) => {
     res.status(dbUp ? 200 : 503).json({status: dbUp ? 'ok' : 'degraded', db: dbUp ? 'up' : 'down'});
 });
 
-app.post(['/auth/register', '/auth/login'], protectAuthEndpoint);
+app.post(['/auth/register', '/auth/login', '/auth/forgot-password', '/auth/reset-password', '/auth/resend-verification'], protectAuthEndpoint);
 app.use('/', authRoutes);
 
-app.post(EXPENSIVE_ENDPOINTS, requireAuth, requireCsrf, protectExpensiveEndpoint);
+app.post(EXPENSIVE_ENDPOINTS, requireAuth, requireVerifiedEmail, requireCsrf, protectExpensiveEndpoint);
 
 app.use('/', drugRoutes);
 app.use('/', interactionRoutes);

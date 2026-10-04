@@ -4,6 +4,13 @@ export const ENV_VARS = {
     dbName: 'DB_NAME',
     corsOrigin: 'CORS_ORIGIN',
     registrationCode: 'REGISTRATION_CODE',
+    appUrl: 'APP_URL',
+    mailMode: 'MAIL_MODE',
+    smtpHost: 'SMTP_HOST',
+    smtpPort: 'SMTP_PORT',
+    smtpUser: 'SMTP_USER',
+    smtpPassword: 'SMTP_PASSWORD',
+    smtpFrom: 'SMTP_FROM',
     openAiApiKey: 'OPENAI_API_KEY',
     nodeEnv: 'NODE_ENV'
 };

@@ -46,4 +46,11 @@ describe('runtime config validation', () => {
         process.env[ENV_VARS.registrationCode] = 'short';
         expect(() => validateRuntimeConfig()).toThrow('REGISTRATION_CODE must contain at least 24 characters');
     });
+
+    test('requires configured SMTP delivery in production', () => {
+        process.env[ENV_VARS.nodeEnv] = 'production';
+        process.env[ENV_VARS.registrationCode] = 'a'.repeat(24);
+        delete process.env[ENV_VARS.mailMode];
+        expect(() => validateRuntimeConfig()).toThrow('MAIL_MODE must be smtp outside local runtime');
+    });
 });

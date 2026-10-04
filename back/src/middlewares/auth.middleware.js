@@ -21,12 +21,21 @@ export const requireAuth = async (req, res, next) => {
         const session = await getSession(getSessionToken(req));
         if (!session?.userId) return next(new UnauthorizedError('Sign in required'));
         req.authSession = session;
-        req.user = {id: String(session.userId._id), email: session.userId.email};
+        req.user = {
+            id: String(session.userId._id),
+            email: session.userId.email,
+            emailVerified: session.userId.emailVerifiedAt !== null
+        };
         res.set('Cache-Control', 'no-store');
         return next();
     } catch (error) {
         return next(error);
     }
+};
+
+export const requireVerifiedEmail = (req, res, next) => {
+    if (!req.user.emailVerified) return next(new ForbiddenError('Verify your email before using this endpoint'));
+    return next();
 };
 
 export const requireCsrf = (req, res, next) => {

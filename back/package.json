@@ -19,6 +19,7 @@
     "express": "^5.2.1",
     "joi": "^18.2.9",
     "mongoose": "^9.7.3",
+    "nodemailer": "^10.0.14",
     "openai": "^7.23.0"
   },
   "devDependencies": {

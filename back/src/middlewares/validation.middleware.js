@@ -19,6 +19,19 @@ const schemas = {
         email: Joi.string().trim().email().max(254).required(),
         password: Joi.string().max(128).required()
     }),
+    revokeSession: Joi.object({
+        sessionId: objectId.required()
+    }),
+    verifyEmail: Joi.object({
+        token: Joi.string().hex().length(64).required()
+    }),
+    forgotPassword: Joi.object({
+        email: Joi.string().trim().email().max(254).required()
+    }),
+    resetPassword: Joi.object({
+        token: Joi.string().hex().length(64).required(),
+        password: Joi.string().min(12).max(128).required()
+    }),
     searchDrugs: Joi.object({
         text: Joi.string().trim().min(1).max(100).required()
     }),

@@ -34,7 +34,7 @@ This project turns that workflow into an interactive graph:
 - Centralized API validation and normalized error responses.
 - FDA retry/backoff and graceful degradation for interaction checks when external APIs are rate-limited.
 - Bounded concurrency and in-flight deduplication for expensive interaction analysis.
-- Registration-code-gated accounts, API-managed sessions, CSRF protection, and per-user in-memory rate limits for costly endpoints.
+- Registration-code-gated accounts, email verification, password recovery, session revocation, CSRF protection, and per-user in-memory rate limits for costly endpoints.
 - Backend tests for validation, error handling, canonical pair behavior, importable app setup, and long FDA label handling.
 
 ## Architecture
@@ -135,6 +135,8 @@ DB_NAME=polypharmacy
 OPENAI_API_KEY=sk-...
 CORS_ORIGIN=http://localhost:5173
 REGISTRATION_CODE=replace-with-a-long-random-invitation-code
+APP_URL=http://localhost:5173
+MAIL_MODE=console
 ```
 
 Create frontend env:
@@ -152,6 +154,8 @@ VITE_API_URL=http://localhost:3000
 `OPENAI_API_KEY` is required at backend startup. `REGISTRATION_CODE` gates account creation and is required outside local runtime with at least 24 characters. Generate a random code for deployment, for example with `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`. Never place the code in a `VITE_` variable. Users enter it in the registration form; a shared code can be reused until it is rotated.
 
 The API stores a hashed random session token in MongoDB and sends the raw token only in a seven-day, HttpOnly cookie (`Secure` in production). `/auth/me` returns the current user and a CSRF token; the SPA includes that token on authenticated POST requests. Login and registration are rate-limited by client IP; costly endpoints are rate-limited by signed-in user. These limits still use process memory and need shared storage before running multiple API instances.
+
+New accounts must verify their email before using drug search or AI endpoints. In local development, `MAIL_MODE=console` prints verification and password-reset links to the backend terminal. For deployment, set `MAIL_MODE=smtp`, `APP_URL` to the HTTPS SPA origin, and configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, plus `SMTP_USER` and `SMTP_PASSWORD` when the server requires authentication. Production startup rejects console delivery. Accounts created before email verification was introduced retain access; new accounts have `emailVerifiedAt: null` until verified.
 
 ## Setup
 
@@ -226,7 +230,7 @@ curl -c cookies.txt -X POST http://localhost:3000/auth/register \
   -d '{"email":"person@example.com","password":"a-long-unique-password","registrationCode":"YOUR_REGISTRATION_CODE"}'
 ```
 
-The JSON response contains `csrfToken`. Send it as `x-csrf-token` with the saved cookie on subsequent POST requests. Existing users can POST `email` and `password` to `/auth/login`; GET `/auth/me` restores the CSRF token after a page reload, and POST `/auth/logout` invalidates the session.
+The JSON response contains `csrfToken`. Send it as `x-csrf-token` with the saved cookie on subsequent POST requests. New users must follow the verification link before using protected drug endpoints. Existing users can POST `email` and `password` to `/auth/login`; GET `/auth/me` restores the CSRF token after a page reload, and POST `/auth/logout` invalidates the session. The SPA also supports password reset and listing or revoking active sessions. API endpoints are `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/verify`, `POST /auth/resend-verification`, `GET /auth/sessions`, and `DELETE /auth/sessions/:sessionId`. Reset links expire after 30 minutes, verification links after 24 hours, and using a reset link revokes all sessions.
 
 Search and enrich drugs:
 
@@ -329,7 +333,7 @@ Current backend test coverage focuses on:
 - OpenAI and FDA external error mapping
 - bounded interaction sync concurrency
 - in-flight deduplication for concurrent interaction pair syncs
-- registration-code-gated login, session and CSRF protection, and rate limits for costly endpoints
+- registration-code-gated login, email verification, password recovery, session revocation, CSRF protection, and rate limits for costly endpoints
 - normalized drug name duplicate protection
 - FDA-grounded RAG and tool-calling agent citation gates
 
@@ -337,7 +341,7 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 22 suites, 88 tests |
+| `cd back && npm test` | Passed: 23 suites, 97 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed |
 
@@ -382,7 +386,8 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - This is not medical advice and must not be used for clinical decisions.
 - A missing graph edge means no interaction record was found or returned for that pair; it does not prove the combination is safe.
 - Backend is JavaScript while frontend is TypeScript; backend TypeScript migration is a future improvement.
-- AWS deployment is not implemented in this repository; email verification, password recovery, and session management UI are not implemented yet.
+- AWS deployment is not implemented in this repository; production email delivery requires external SMTP configuration.
+- The registration code is shared until rotated, and email delivery is not queued or retried after a provider outage.
 - Structured logging, request IDs, and metrics are not fully implemented yet.
 - Docker Compose is not included yet.
 - CI exists for backend tests and frontend build/lint, but deployment/CD and Docker image build checks are not configured yet.
@@ -396,7 +401,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 
 ## Roadmap
 
-1. Extend API-owned authentication with email verification, password recovery, session management UI, and a deployment-ready domain and proxy configuration.
+1. Harden account delivery with one-time invitations, reliable email delivery, and a deployment-ready domain and proxy configuration.
 2. Strengthen evidence presentation and evaluation. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; test insufficient-evidence behavior and citation quality against a fixed set of example questions.
 3. Improve reliability and observability. Add request IDs, structured logs with sensitive-data redaction, and request/cost metrics. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
 4. Add frontend regression tests and polish the graph layout, empty states, per-pair progress, and interaction details. Fix the graph's viewport-sized container within the page layout.
