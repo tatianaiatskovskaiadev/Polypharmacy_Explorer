@@ -12,7 +12,7 @@ export const getSimilarDrugs = async (req, res) => {
         name: drug.name,
         activeIngredient: drug.activeIngredient,
         guidelines: {
-            source: drug.guidelines?.source ?? 'FDA',
+            source: drug.guidelines?.source ?? 'Unknown',
             sourceUrl: drug.guidelines?.sourceUrl,
             verificationSource: drug.guidelines?.verificationSource,
             verificationUrl: drug.guidelines?.verificationUrl

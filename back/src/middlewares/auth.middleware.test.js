@@ -9,7 +9,8 @@ jest.unstable_mockModule('../services/auth.service.js', () => ({
     SESSION_COOKIE_NAME: 'pe_session'
 }));
 
-const {getSessionToken, requireAllowedOrigin, requireAuth, requireCsrf, requireVerifiedEmail} = await import('./auth.middleware.js');
+const {getSessionToken, requireAdmin, requireAllowedOrigin, requireAuth, requireCsrf, requireVerifiedEmail} =
+    await import('./auth.middleware.js');
 
 describe('authentication middleware', () => {
     beforeEach(() => {
@@ -38,7 +39,7 @@ describe('authentication middleware', () => {
         const next = jest.fn();
         await requireAuth(req, res, next);
         requireCsrf(req, {}, next);
-        expect(req.user).toEqual({id: 'user-1', email: 'person@example.com', emailVerified: true});
+        expect(req.user).toEqual({id: 'user-1', email: 'person@example.com', emailVerified: true, role: 'user'});
         expect(matchesCsrfToken).toHaveBeenCalledWith(session, 'csrf');
         expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
         expect(next).toHaveBeenLastCalledWith();
@@ -57,6 +58,15 @@ describe('authentication middleware', () => {
         expect(next).toHaveBeenCalledWith(expect.objectContaining({statusCode: 403}));
         next.mockClear();
         requireVerifiedEmail({user: {emailVerified: true}}, {}, next);
+        expect(next).toHaveBeenCalledWith();
+    });
+
+    test('allows only administrators through the role guard', () => {
+        const next = jest.fn();
+        requireAdmin({user: {role: 'user'}}, {}, next);
+        expect(next).toHaveBeenCalledWith(expect.objectContaining({statusCode: 403}));
+        next.mockClear();
+        requireAdmin({user: {role: 'admin'}}, {}, next);
         expect(next).toHaveBeenCalledWith();
     });
 

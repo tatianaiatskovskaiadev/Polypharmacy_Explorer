@@ -233,6 +233,8 @@ curl -c cookies.txt -X POST http://localhost:3000/auth/register \
 
 The JSON response contains `csrfToken`. Send it as `x-csrf-token` with the saved cookie on subsequent POST requests. New users must follow the verification link before using protected drug endpoints. Existing users can POST `email` and `password` to `/auth/login`; GET `/auth/me` restores the CSRF token after a page reload, and POST `/auth/logout` invalidates the session. The SPA also supports password reset and listing or revoking active sessions. API endpoints are `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/verify`, `POST /auth/resend-verification`, `GET /auth/sessions`, and `DELETE /auth/sessions/:sessionId`. Reset links expire after 30 minutes, verification links after 24 hours, and using a reset link revokes all sessions.
 
+New accounts receive the `user` role. To authorize an existing verified account to submit drug records through `POST /`, set its role to `admin` using a privileged MongoDB connection, for example `db.users.updateOne({email: "person@example.com"}, {$set: {role: "admin"}})`. This endpoint still requires the session cookie and CSRF token. Do not submit unverified text as FDA label content.
+
 Search and enrich drugs:
 
 ```bash
@@ -351,7 +353,7 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 27 suites, 117 tests |
+| `cd back && npm test` | Passed: 30 suites, 126 tests (without `OPENAI_API_KEY`) |
 | `cd front && npm test` | Passed: 6 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed |

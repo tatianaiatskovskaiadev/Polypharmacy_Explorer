@@ -4,10 +4,11 @@ import mongoose from 'mongoose';
 import config from './configuration/config.js';
 import {ConflictError, ForbiddenError} from './utils/errors.js';
 
-const user = {id: '507f1f77bcf86cd799439011', email: 'person@example.com', emailVerified: true};
+const user = {id: '507f1f77bcf86cd799439011', email: 'person@example.com', emailVerified: true, role: 'user'};
 const csrfToken = 'a'.repeat(64);
 let sessionActive = false;
 let emailVerifiedAt;
+let sessionRole = 'user';
 const createUser = jest.fn().mockResolvedValue(user);
 const claimInvitation = jest.fn().mockResolvedValue({id: 'invitation-1', consumedAt: new Date()});
 const releaseInvitation = jest.fn().mockResolvedValue(undefined);
@@ -26,7 +27,7 @@ jest.unstable_mockModule('./services/auth.service.js', () => ({
     }),
     getSession: jest.fn().mockImplementation(async (token) => (
         sessionActive && token === 'b'.repeat(64)
-            ? {userId: {_id: user.id, email: user.email, emailVerifiedAt}, csrfToken}
+            ? {userId: {_id: user.id, email: user.email, emailVerifiedAt, role: sessionRole}, csrfToken}
             : null
     )),
     deleteSession: jest.fn().mockImplementation(async () => { sessionActive = false; }),
@@ -58,6 +59,7 @@ describe('API authentication flow', () => {
         config.registrationCode = previousCode;
         sessionActive = false;
         emailVerifiedAt = undefined;
+        sessionRole = 'user';
         createUser.mockReset().mockResolvedValue(user);
         claimInvitation.mockClear();
         releaseInvitation.mockClear();
@@ -173,6 +175,20 @@ describe('API authentication flow', () => {
         emailVerifiedAt = new Date();
         expect((await request(app).post('/search').set('Cookie', cookie)
             .set('x-csrf-token', csrfToken).send({text: ''})).status).toBe(400);
+    });
+
+    test('allows only administrators to reach drug creation validation', async () => {
+        sessionActive = true;
+        emailVerifiedAt = new Date();
+        const cookie = `pe_session=${'b'.repeat(64)}`;
+        const ordinaryResponse = await request(app).post('/').set('Cookie', cookie)
+            .set('x-csrf-token', csrfToken).send({});
+        expect(ordinaryResponse.status).toBe(403);
+
+        sessionRole = 'admin';
+        const adminResponse = await request(app).post('/').set('Cookie', cookie)
+            .set('x-csrf-token', csrfToken).send({});
+        expect(adminResponse.status).toBe(400);
     });
 
     test('accepts a generic reset request and expires the browser session after reset', async () => {

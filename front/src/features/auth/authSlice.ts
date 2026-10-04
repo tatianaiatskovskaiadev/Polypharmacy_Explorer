@@ -1,7 +1,7 @@
 import {createSlice, type PayloadAction} from '@reduxjs/toolkit';
 
 export type AuthSession = {
-    user: {id: string; email: string; emailVerified: boolean};
+    user: {id: string; email: string; emailVerified: boolean; role: 'user' | 'admin'};
     csrfToken: string;
 };
 

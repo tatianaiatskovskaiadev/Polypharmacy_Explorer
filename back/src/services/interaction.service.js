@@ -5,21 +5,9 @@ import * as interactionRepository from "../repository/interaction.repository.js"
 import * as drugRepository from "../repository/drug.repository.js";
 import {COLOR_BY_RISK, INTERACTION_ANALYSIS_VERSION, INTERACTION_SYNC_CONCURRENCY} from "../utils/constants.js";
 import {ExternalServiceError} from "../utils/errors.js";
+import {runWithConcurrency} from '../utils/concurrency.js';
 
 const inFlightInteractionSyncs = new Map();
-
-const runWithConcurrency = async (items, limit, task) => {
-    const workers = Array.from(
-        {length: Math.min(limit, items.length)},
-        async (_, workerIndex) => {
-            for (let index = workerIndex; index < items.length; index += limit) {
-                await task(items[index]);
-            }
-        }
-    );
-
-    await Promise.all(workers);
-};
 
 export const checkInteraction = async (drugIds) => {
     if (drugIds.length < 2) {

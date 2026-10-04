@@ -9,7 +9,11 @@ import {
     OPENAI_JSON_RESPONSE_FORMAT
 } from "../utils/constants.js";
 
-const openai = new OpenAI();
+let openai;
+const getOpenAI = () => {
+    openai ??= new OpenAI();
+    return openai;
+};
 
 const callOpenAI = async (operation) => {
     try {
@@ -27,7 +31,7 @@ export const createVector = async (originalText) => {
         ? originalText.slice(0, MAX_EMBEDDING_INPUT_LENGTH)
         : originalText;
 
-    const embedding = await callOpenAI(() => openai.embeddings.create({
+    const embedding = await callOpenAI(() => getOpenAI().embeddings.create({
         model: OPENAI_EMBEDDING_MODEL,
         input,
         encoding_format: OPENAI_EMBEDDING_ENCODING_FORMAT,
@@ -37,7 +41,7 @@ export const createVector = async (originalText) => {
 
 export const createVectors = async (texts) => {
     if (texts.length === 0) return [];
-    const response = await callOpenAI(() => openai.embeddings.create({
+    const response = await callOpenAI(() => getOpenAI().embeddings.create({
         model: OPENAI_EMBEDDING_MODEL,
         input: texts,
         encoding_format: OPENAI_EMBEDDING_ENCODING_FORMAT
@@ -51,7 +55,7 @@ export const answerFromEvidence = async (question, passages) => {
     const context = passages.map((passage, index) => (
         `[${index + 1}] ${passage.drugName} | ${passage.section}\n${passage.text}`
     )).join('\n\n');
-    const response = await callOpenAI(() => openai.chat.completions.create({
+    const response = await callOpenAI(() => getOpenAI().chat.completions.create({
         model: OPENAI_CHAT_MODEL,
         messages: [
             {
@@ -71,7 +75,7 @@ export const answerFromEvidence = async (question, passages) => {
 };
 
 export const completeAgentTurn = async (messages, tools, toolChoice = 'auto') => {
-    const response = await callOpenAI(() => openai.chat.completions.create({
+    const response = await callOpenAI(() => getOpenAI().chat.completions.create({
         model: OPENAI_CHAT_MODEL,
         messages,
         tools,
@@ -127,7 +131,7 @@ export const normalizeInteractionText = async (rawText, context = {}) => {
         }
         `;
 
-    const response = await callOpenAI(() => openai.chat.completions.create({
+    const response = await callOpenAI(() => getOpenAI().chat.completions.create({
         model: OPENAI_CHAT_MODEL,
         messages: [
             {

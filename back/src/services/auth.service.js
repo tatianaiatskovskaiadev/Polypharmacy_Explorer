@@ -16,7 +16,8 @@ const normalizeEmail = (email) => email.trim().toLowerCase();
 const publicUser = (user) => ({
     id: String(user._id),
     email: user.email,
-    emailVerified: user.emailVerifiedAt !== null
+    emailVerified: user.emailVerifiedAt !== null,
+    role: user.role === 'admin' ? 'admin' : 'user'
 });
 
 const hashPassword = async (password) => {
@@ -35,7 +36,10 @@ const verifyPassword = async (password, stored) => {
 
 export const createUser = async (email, password, session) => {
     try {
-        const data = {email: normalizeEmail(email), passwordHash: await hashPassword(password), emailVerifiedAt: null};
+        const data = {
+            email: normalizeEmail(email), passwordHash: await hashPassword(password),
+            emailVerifiedAt: null, role: 'user'
+        };
         const user = session ? (await User.create([data], {session}))[0] : await User.create(data);
         return publicUser(user);
     } catch (error) {

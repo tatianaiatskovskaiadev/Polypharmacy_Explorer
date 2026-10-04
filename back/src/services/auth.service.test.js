@@ -51,13 +51,26 @@ describe('authentication service', () => {
     test('normalizes email and hashes passwords before saving', async () => {
         userCreate.mockImplementation(async (data) => ({_id: 'user-1', ...data}));
         const user = await createUser(' Person@Example.com ', 'strong-password-123');
-        expect(user).toEqual({id: 'user-1', email: 'person@example.com', emailVerified: false});
+        expect(user).toEqual({id: 'user-1', email: 'person@example.com', emailVerified: false, role: 'user'});
         const saved = userCreate.mock.calls[0][0];
         expect(saved.email).toBe('person@example.com');
+        expect(saved.role).toBe('user');
         expect(saved.passwordHash).not.toContain('strong-password-123');
         userFindOne.mockReturnValue({select: jest.fn().mockResolvedValue({_id: 'user-1', ...saved})});
         await expect(authenticateUser('PERSON@example.com', 'strong-password-123')).resolves.toEqual(user);
         await expect(authenticateUser('person@example.com', 'wrong-password')).rejects.toMatchObject({statusCode: 401});
+    });
+
+    test('returns the stored administrator role after login', async () => {
+        userCreate.mockImplementation(async (data) => ({_id: 'user-1', ...data}));
+        await createUser('admin@example.com', 'strong-password-123');
+        const saved = userCreate.mock.calls[0][0];
+        userFindOne.mockReturnValue({select: jest.fn().mockResolvedValue({
+            _id: 'user-1', ...saved, role: 'admin'
+        })});
+
+        await expect(authenticateUser('admin@example.com', 'strong-password-123'))
+            .resolves.toMatchObject({role: 'admin'});
     });
 
     test('stores a hashed session token and invalidates it on logout', async () => {

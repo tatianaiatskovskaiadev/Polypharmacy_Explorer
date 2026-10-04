@@ -5,10 +5,11 @@ import {
 } from '../controllers/drug.controller.js';
 
 import validate from '../middlewares/validation.middleware.js';
+import {requireAdmin} from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
-router.post('/', validate('createDrug'), createDrug);
+router.post('/', requireAdmin, validate('createDrug'), createDrug);
 router.post('/search', validate('searchDrugs'), getSimilarDrugs);
 router.post('/search/symptom', validate('searchDrugsBySymptom'), getDrugsBySymptom);
 

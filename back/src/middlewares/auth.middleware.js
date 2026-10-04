@@ -24,7 +24,8 @@ export const requireAuth = async (req, res, next) => {
         req.user = {
             id: String(session.userId._id),
             email: session.userId.email,
-            emailVerified: session.userId.emailVerifiedAt !== null
+            emailVerified: session.userId.emailVerifiedAt !== null,
+            role: session.userId.role === 'admin' ? 'admin' : 'user'
         };
         res.set('Cache-Control', 'no-store');
         return next();
@@ -35,6 +36,11 @@ export const requireAuth = async (req, res, next) => {
 
 export const requireVerifiedEmail = (req, res, next) => {
     if (!req.user.emailVerified) return next(new ForbiddenError('Verify your email before using this endpoint'));
+    return next();
+};
+
+export const requireAdmin = (req, res, next) => {
+    if (req.user?.role !== 'admin') return next(new ForbiddenError('Administrator access required'));
     return next();
 };
 

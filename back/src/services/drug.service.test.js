@@ -164,6 +164,39 @@ describe('drug service', () => {
         }));
     });
 
+    test('skips empty ingredient labels before applying the analogue limit', async () => {
+        const activeIngredient = 'DIPHENHYDRAMINE';
+        const emptyLabels = Array.from({length: 12}, (_, index) => ({
+            openfda: {
+                brand_name: [`Empty ${index}`],
+                generic_name: [activeIngredient]
+            }
+        }));
+        const validLabel = {
+            openfda: {
+                brand_name: ['Valid label'],
+                generic_name: [activeIngredient]
+            },
+            warnings: ['FDA warning']
+        };
+        getDrugByName.mockResolvedValue([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([])
+            .mockResolvedValueOnce([...emptyLabels, validLabel]);
+        resolveIngredientFromPubChem.mockResolvedValueOnce({
+            activeIngredient,
+            source: 'PubChem (NIH)',
+            sourceUrl: 'https://example.com/chemical'
+        });
+        const alias = {_id: 'alias-1', name: 'Dimedrol', activeIngredient};
+        const analogue = {_id: 'analogue-1', name: 'Valid label', activeIngredient};
+        upsertInternationalDrug.mockResolvedValueOnce(alias);
+        createVector.mockResolvedValueOnce([0.1]);
+        createDrug.mockResolvedValueOnce(analogue);
+
+        await expect(getSimilarDrugs('Dimedrol')).resolves.toEqual([alias, analogue]);
+        expect(createDrug).toHaveBeenCalledTimes(1);
+    });
+
     test('uses a DailyMed ingredient label when FDA has no matching label', async () => {
         getDrugByName.mockResolvedValueOnce([]);
         fetchAnaloguesFromFDA.mockResolvedValue([]);
@@ -372,6 +405,24 @@ describe('drug service', () => {
         expect(result.map((drug) => drug.name)).toEqual(['WARFARIN SODIUM', 'COUMADIN']);
         expect(createDrug).toHaveBeenCalledTimes(1);
         expect(saveSearchResult).toHaveBeenCalledWith('warfarin', result);
+    });
+
+    test('saves at most twelve distinct FDA analogues', async () => {
+        getDrugByName.mockResolvedValue([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce(Array.from({length: 13}, (_, index) => ({
+            openfda: {
+                brand_name: [`Brand ${index}`],
+                generic_name: ['WARFARIN']
+            },
+            warnings: [`FDA warning ${index}`]
+        })));
+        createVector.mockResolvedValue([0.1]);
+        createDrug.mockImplementation(async (drug) => ({...drug, _id: drug.name}));
+
+        const result = await getSimilarDrugs('warfarin');
+
+        expect(result).toHaveLength(12);
+        expect(createDrug).toHaveBeenCalledTimes(12);
     });
 
     test('does not present combination products as an exact ingredient result', async () => {

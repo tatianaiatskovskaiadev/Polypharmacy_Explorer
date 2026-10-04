@@ -8,8 +8,11 @@ import {findDailyMedDrug} from './dailymed.service.js';
 import {resolveIngredientFromPubChem} from './ingredient-resolution.service.js';
 import {indexFdaPassages} from './fda-passage.service.js';
 import {ExternalServiceError} from '../utils/errors.js';
+import {runWithConcurrency} from '../utils/concurrency.js';
 import {
+    DRUG_ANALOGUE_SAVE_CONCURRENCY,
     DRUG_SEARCH_FALLBACK_CACHE_TTL_MS,
+    MAX_FDA_ANALOGUES_PER_SEARCH,
     MAX_EMBEDDING_TEXT_LENGTH,
     MAX_FDA_SECTION_LENGTH
 } from '../utils/constants.js';
@@ -85,11 +88,6 @@ const tryOfficialLookup = async (lookup, name) => {
     }
 };
 
-const isSingleIngredientMatch = (drug, normalizedSearchText) => {
-    const ingredients = splitIngredients(drug.activeIngredient);
-    return ingredients.length === 1 && ingredients[0].includes(normalizedSearchText);
-};
-
 const scoreLocalDrugMatch = (drug, searchText) => {
     const normalizedSearchText = normalizeSearchText(searchText);
     const normalizedName = normalizeSearchText(drug.name);
@@ -100,9 +98,8 @@ const scoreLocalDrugMatch = (drug, searchText) => {
     if (ingredients.includes(normalizedSearchText)) {
         return 90;
     }
-    if (isSingleIngredientMatch(drug, normalizedSearchText)) return 80;
+    if (ingredients[0]?.includes(normalizedSearchText)) return 80;
     if (normalizedName.startsWith(normalizedSearchText)) return 70;
-    if (ingredients.some((ingredient) => ingredient.includes(normalizedSearchText))) return 60;
     if (normalizedName.includes(normalizedSearchText)) return 50;
 
     return 0;
@@ -213,7 +210,7 @@ const findInLocalDb = async (text) => mergeRankedDrugResults([], (
     await drugRepository.getDrugByName(text, {searchSummary: true})
 ).filter((drug) => scoreLocalDrugMatch(drug, text) >= 70), text);
 
-const findInOfficialSources = async (text, localDrugs) => {
+const resolveAndSaveOfficialSources = async (text, localDrugs) => {
     let fdaAnalogues = rankFdaAnalogues(
         await fetchAnaloguesFromFDA(text),
         text
@@ -225,12 +222,15 @@ const findInOfficialSources = async (text, localDrugs) => {
 
     if (fdaAnalogues.length === 0) {
         if (localDrugs.length > 0) {
-            return {results: localDrugs, ttl: DRUG_SEARCH_FALLBACK_CACHE_TTL_MS};
+            return {
+                fdaAnalogues, resolvedDrug,
+                directResults: localDrugs, ttl: DRUG_SEARCH_FALLBACK_CACHE_TTL_MS
+            };
         }
         const dailyMedDrug = await tryOfficialLookup(findDailyMedDrug, text);
         if (dailyMedDrug) {
             const savedDrug = await drugRepository.upsertInternationalDrug(dailyMedDrug);
-            return {results: [savedDrug]};
+            return {fdaAnalogues, resolvedDrug, directResults: [savedDrug], ttl: null};
         }
 
         const resolvedIngredient = await tryOfficialLookup(resolveIngredientFromPubChem, text);
@@ -259,7 +259,7 @@ const findInOfficialSources = async (text, localDrugs) => {
         }
     }
 
-    return {fdaAnalogues, resolvedDrug};
+    return {fdaAnalogues, resolvedDrug, directResults: null, ttl: null};
 };
 
 const saveFdaAnalogue = async (item, text) => {
@@ -306,16 +306,15 @@ export const getSimilarDrugs = async (text) => {
     if (cachedDrugs !== null) return cachedDrugs;
 
     const localDrugs = await findInLocalDb(text);
-    const officialResults = await findInOfficialSources(text, localDrugs);
-    if ('results' in officialResults) {
+    const {fdaAnalogues, resolvedDrug, directResults, ttl} =
+        await resolveAndSaveOfficialSources(text, localDrugs);
+    if (directResults !== null) {
         await searchCacheRepository.saveSearchResult(
-            searchText, officialResults.results,
-            ...(officialResults.ttl ? [officialResults.ttl] : [])
+            searchText, directResults,
+            ...(ttl ? [ttl] : [])
         );
-        return officialResults.results;
+        return directResults;
     }
-
-    const {fdaAnalogues, resolvedDrug} = officialResults;
 
     if (fdaAnalogues.length === 0) {
         if (resolvedDrug) {
@@ -328,18 +327,20 @@ export const getSimilarDrugs = async (text) => {
         return [];
     }
 
-    const savedDrugs = [];
-    const processedNames = new Set();
-
+    const uniqueAnalogues = new Map();
     for (const item of fdaAnalogues) {
+        const name = normalizeSearchText(getFdaItemName(item));
+        if (!name || !buildEmbeddingText(item) || uniqueAnalogues.has(name)) continue;
+        uniqueAnalogues.set(name, item);
+        if (uniqueAnalogues.size >= MAX_FDA_ANALOGUES_PER_SEARCH) break;
+    }
 
-        const name = getFdaItemName(item);
-
-        if (!name || processedNames.has(normalizeSearchText(name))) continue;
-        if (processedNames.size >= 12) break;
-        processedNames.add(normalizeSearchText(name));
-
-        const savedDrug = await saveFdaAnalogue(item, text);
+    const savedDrugs = [];
+    const analogueResults = await runWithConcurrency(
+        [...uniqueAnalogues.values()], DRUG_ANALOGUE_SAVE_CONCURRENCY,
+        (item) => saveFdaAnalogue(item, text)
+    );
+    for (const savedDrug of analogueResults) {
         if (savedDrug && !savedDrugs.some((drug) => String(drug._id) === String(savedDrug._id))) {
             savedDrugs.push(savedDrug);
         }
