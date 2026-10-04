@@ -1,5 +1,5 @@
 import {afterEach, expect, test, vi} from 'vitest';
-import {cleanup, render, screen} from '@testing-library/react';
+import {cleanup, render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {Provider} from 'react-redux';
 import {store} from '../app/store.ts';
@@ -45,4 +45,28 @@ test('searches, adds a drug once, and removes it from the graph', async () => {
     await user.click(screen.getByRole('button', {name: 'Remove Aspirin'}));
     expect(screen.queryByRole('button', {name: 'Remove Aspirin'})).toBeNull();
     expect(screen.getByTestId('graph-drugs').textContent).toBe('');
+    expect(screen.queryByText(/Results may be incomplete/)).toBeNull();
+});
+
+test('shows partial results and retries the same search instead of reusing its cache', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify([drug]), {
+        status: 200,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(fetchMock.mock.calls.length === 1 ? {'X-Search-Partial': 'true'} : {})
+        }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<Provider store={store}><SearchPanel/></Provider>);
+
+    await user.type(screen.getByRole('textbox', {name: 'Drugs:'}), 'aspirin');
+    await user.click(screen.getAllByRole('button', {name: 'Search'})[0]);
+    expect(await screen.findByRole('button', {name: 'Add Aspirin'})).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('Results may be incomplete');
+
+    await user.type(screen.getByRole('textbox', {name: 'Drugs:'}), 'aspirin');
+    await user.click(screen.getAllByRole('button', {name: 'Search'})[0]);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
 });

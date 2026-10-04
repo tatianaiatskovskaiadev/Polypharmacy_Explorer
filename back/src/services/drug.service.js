@@ -223,14 +223,13 @@ const resolveAndSaveOfficialSources = async (text, localDrugs) => {
     if (fdaAnalogues.length === 0) {
         if (localDrugs.length > 0) {
             return {
-                fdaAnalogues, resolvedDrug,
                 directResults: localDrugs, ttl: DRUG_SEARCH_FALLBACK_CACHE_TTL_MS
             };
         }
         const dailyMedDrug = await tryOfficialLookup(findDailyMedDrug, text);
         if (dailyMedDrug) {
             const savedDrug = await drugRepository.upsertInternationalDrug(dailyMedDrug);
-            return {fdaAnalogues, resolvedDrug, directResults: [savedDrug], ttl: null};
+            return {directResults: [savedDrug]};
         }
 
         const resolvedIngredient = await tryOfficialLookup(resolveIngredientFromPubChem, text);
@@ -259,7 +258,7 @@ const resolveAndSaveOfficialSources = async (text, localDrugs) => {
         }
     }
 
-    return {fdaAnalogues, resolvedDrug, directResults: null, ttl: null};
+    return {fdaAnalogues, resolvedDrug};
 };
 
 const saveFdaAnalogue = async (item, text) => {
@@ -308,31 +307,30 @@ const saveFdaAnalogue = async (item, text) => {
     return savedDrug;
 };
 
-export const getSimilarDrugs = async (text) => {
+export const getSimilarDrugsWithStatus = async (text) => {
     const searchText = normalizeSearchText(text);
     const cachedDrugs = await findInCache(searchText, text);
-    if (cachedDrugs !== null) return cachedDrugs;
+    if (cachedDrugs !== null) return {drugs: cachedDrugs, partial: false};
 
     const localDrugs = await findInLocalDb(text);
     const {fdaAnalogues, resolvedDrug, directResults, ttl} =
         await resolveAndSaveOfficialSources(text, localDrugs);
-    if (directResults !== null) {
+    if (directResults !== undefined) {
         await searchCacheRepository.saveSearchResult(
-            searchText, directResults,
-            ...(ttl ? [ttl] : [])
+            searchText, directResults, ttl ?? undefined
         );
-        return directResults;
+        return {drugs: directResults, partial: false};
     }
 
     if (fdaAnalogues.length === 0) {
         if (resolvedDrug) {
             await searchCacheRepository.saveSearchResult(searchText, [resolvedDrug]);
-            return [resolvedDrug];
+            return {drugs: [resolvedDrug], partial: false};
         }
         await searchCacheRepository.saveSearchResult(
             searchText, [], DRUG_SEARCH_FALLBACK_CACHE_TTL_MS
         );
-        return [];
+        return {drugs: [], partial: false};
     }
 
     const uniqueAnalogues = new Map();
@@ -346,18 +344,21 @@ export const getSimilarDrugs = async (text) => {
     const savedDrugs = [];
     const analogueResults = await runWithConcurrency(
         [...uniqueAnalogues.values()], DRUG_ANALOGUE_SAVE_CONCURRENCY,
-        (item) => saveFdaAnalogue(item, text)
+        async (item) => {
+            try {
+                return {drug: await saveFdaAnalogue(item, text)};
+            } catch (error) {
+                if (!(error instanceof ExternalServiceError)) throw error;
+                console.error('FDA analogue enrichment failed:', error);
+                return {error};
+            }
+        }
     );
-    for (const savedDrug of analogueResults) {
+    const failedAnalogues = analogueResults.filter((result) => result.error);
+    for (const {drug: savedDrug} of analogueResults) {
         if (savedDrug && !savedDrugs.some((drug) => String(drug._id) === String(savedDrug._id))) {
             savedDrugs.push(savedDrug);
         }
-    }
-
-    if (savedDrugs.length === 0) {
-        const results = mergeRankedDrugResults(localDrugs, resolvedDrug ? [resolvedDrug] : [], text);
-        await searchCacheRepository.saveSearchResult(searchText, results);
-        return results;
     }
 
     const results = mergeRankedDrugResults(
@@ -365,9 +366,14 @@ export const getSimilarDrugs = async (text) => {
         savedDrugs,
         text
     );
-    await searchCacheRepository.saveSearchResult(searchText, results);
-    return results;
+    if (failedAnalogues.length > 0 && results.length === 0) throw failedAnalogues[0].error;
+    if (failedAnalogues.length === 0) {
+        await searchCacheRepository.saveSearchResult(searchText, results);
+    }
+    return {drugs: results, partial: failedAnalogues.length > 0};
 };
+
+export const getSimilarDrugs = async (text) => (await getSimilarDrugsWithStatus(text)).drugs;
 
 export const searchDrugsBySymptom = async (symptom, drugIds) => {
 

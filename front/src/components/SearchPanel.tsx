@@ -39,7 +39,8 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 const SearchPanel = () => {
     const [activeDrugs, setActiveDrugs] = useState<Drug[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [getDrugs, {data: searchResults, isLoading, isError, error: searchError}] = useLazyGetDrugsQuery();
+    const [getDrugs, {data: searchResponse, isLoading, isError, error: searchError}] = useLazyGetDrugsQuery();
+    const searchResults = searchResponse?.drugs;
     const [
         getInteractions,
         {
@@ -129,7 +130,7 @@ const SearchPanel = () => {
                     onClick={() => {
                         const query = searchTerm.trim();
                         if (!query) return;
-                        getDrugs(query, true)
+                        getDrugs(query, !searchResponse?.partial)
                         setSearchTerm('')
                     }}
                 >{isLoading ? 'Searching...' : 'Search'}
@@ -165,6 +166,11 @@ const SearchPanel = () => {
                 isError={isError}
                 errorMessage={getApiErrorMessage(searchError, 'Unable to search drugs.')}
             />
+            {searchResponse?.partial && (
+                <p className="m-2 text-sm text-amber-800" role="status">
+                    Some drug labels could not be processed. Results may be incomplete. Search again to retry.
+                </p>
+            )}
             {activeDrugs.length ? (
                 <div className="m-2 flex flex-wrap gap-2">
                     {activeDrugs.map((drug) => (

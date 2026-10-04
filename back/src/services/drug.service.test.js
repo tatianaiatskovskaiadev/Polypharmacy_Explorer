@@ -52,7 +52,7 @@ jest.unstable_mockModule('../repository/interaction.repository.js', () => ({
     searchInteractionsByText
 }));
 
-const {createDrug: createDrugFromRequest, getSimilarDrugs, searchDrugsBySymptom} = await import('./drug.service.js');
+const {createDrug: createDrugFromRequest, getSimilarDrugs, getSimilarDrugsWithStatus, searchDrugsBySymptom} = await import('./drug.service.js');
 
 const contentHash = (text) => createHash('sha256').update(text).digest('hex');
 
@@ -127,7 +127,7 @@ describe('drug service', () => {
 
         await expect(getSimilarDrugs('warfarin')).resolves.toEqual([savedDrug]);
         expect(upsertInternationalDrug).toHaveBeenCalledWith(officialDrug);
-        expect(saveSearchResult).toHaveBeenCalledWith('warfarin', [savedDrug]);
+        expect(saveSearchResult).toHaveBeenCalledWith('warfarin', [savedDrug], undefined);
     });
 
     test('resolves Dimedrol to diphenhydramine and verifies it against an FDA ingredient label', async () => {
@@ -427,6 +427,59 @@ describe('drug service', () => {
         expect(result.map((drug) => drug.name)).toEqual(['WARFARIN SODIUM', 'COUMADIN']);
         expect(upsertFdaAnalogue).toHaveBeenCalledTimes(1);
         expect(saveSearchResult).toHaveBeenCalledWith('warfarin', result);
+    });
+
+    test('returns successful analogues when another embedding request fails without caching them', async () => {
+        getDrugByName.mockResolvedValue([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([
+            {openfda: {brand_name: ['Working'], generic_name: ['ASPIRIN']}, warnings: ['working label']},
+            {openfda: {brand_name: ['Unavailable'], generic_name: ['ASPIRIN']}, warnings: ['unavailable label']}
+        ]);
+        createVector.mockImplementation(async (label) => {
+            if (label === 'unavailable label') throw new ExternalServiceError('OpenAI unavailable');
+            return [0.1];
+        });
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        try {
+            await expect(getSimilarDrugsWithStatus('aspirin')).resolves.toMatchObject({
+                drugs: [{name: 'Working'}], partial: true
+            });
+            expect(upsertFdaAnalogue).toHaveBeenCalledTimes(1);
+            expect(saveSearchResult).not.toHaveBeenCalled();
+        } finally {
+            consoleSpy.mockRestore();
+        }
+    });
+
+    test('fails when every analogue fails and no other results exist', async () => {
+        getDrugByName.mockResolvedValue([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([{
+            openfda: {brand_name: ['Unavailable'], generic_name: ['ASPIRIN']},
+            warnings: ['unavailable label']
+        }]);
+        createVector.mockRejectedValueOnce(new ExternalServiceError('OpenAI unavailable'));
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        try {
+            await expect(getSimilarDrugsWithStatus('aspirin')).rejects.toThrow('OpenAI unavailable');
+            expect(saveSearchResult).not.toHaveBeenCalled();
+        } finally {
+            consoleSpy.mockRestore();
+        }
+    });
+
+    test('does not hide unexpected analogue persistence errors', async () => {
+        getDrugByName.mockResolvedValue([]);
+        fetchAnaloguesFromFDA.mockResolvedValueOnce([{
+            openfda: {brand_name: ['Aspirin'], generic_name: ['ASPIRIN']},
+            warnings: ['FDA warning']
+        }]);
+        createVector.mockResolvedValueOnce([0.1]);
+        upsertFdaAnalogue.mockRejectedValueOnce(new Error('Database unavailable'));
+
+        await expect(getSimilarDrugsWithStatus('aspirin')).rejects.toThrow('Database unavailable');
+        expect(saveSearchResult).not.toHaveBeenCalled();
     });
 
     test('uses the same upserted analogue for concurrent searches', async () => {

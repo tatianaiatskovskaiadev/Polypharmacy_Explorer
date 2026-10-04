@@ -11,6 +11,8 @@ import type {
 } from "../../utils/types";
 import {clearSession, type AuthSession} from '../auth/authSlice.ts';
 
+type DrugSearchResponse = {drugs: Drug[]; partial: boolean};
+
 const rawBaseQuery = fetchBaseQuery({
     baseUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:3000',
     credentials: 'include',
@@ -33,11 +35,15 @@ export const drugApi = createApi({
     reducerPath: 'drugApi',
     baseQuery,
     endpoints: builder => ({
-        getDrugs: builder.query<Drug[], string>({
+        getDrugs: builder.query<DrugSearchResponse, string>({
             query: (text) => ({
                 url: '/search',
                 method: 'POST',
                 body: {text}
+            }),
+            transformResponse: (response: Drug[], meta) => ({
+                drugs: response,
+                partial: meta?.response?.headers.get('X-Search-Partial') === 'true'
             })
         }),
         getInteractions: builder.query<CheckInteractionsResponse, CheckInteractionsRequest>({

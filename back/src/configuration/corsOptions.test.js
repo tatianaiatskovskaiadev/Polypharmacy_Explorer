@@ -6,5 +6,6 @@ describe('cors options', () => {
     test('allows credentialed requests with a CSRF header', () => {
         expect(corsOptions.credentials).toBe(true);
         expect(corsOptions.allowedHeaders).toContain(CSRF_TOKEN_HEADER);
+        expect(corsOptions.exposedHeaders).toContain('X-Search-Partial');
     });
 });

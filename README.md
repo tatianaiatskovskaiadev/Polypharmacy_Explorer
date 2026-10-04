@@ -249,6 +249,7 @@ curl -X POST http://localhost:3000/search \
 ```
 
 `/search` returns one result per normalized drug name and only the fields needed by the UI. If older database rows contain duplicates, the result with the strongest available label evidence is selected; full FDA label text stays on the server. This does not delete duplicate MongoDB records.
+If processing one openFDA analogue fails while others succeed, `/search` returns the available results with `X-Search-Partial: true` and does not cache that incomplete result set. The UI warns that results may be incomplete and lets users retry. If no result can be returned, the request fails rather than presenting an empty search as complete.
 
 Check interactions for selected drugs:
 
@@ -357,8 +358,8 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 32 suites, 136 tests (without `OPENAI_API_KEY`) |
-| `cd front && npm test` | Passed: 8 tests |
+| `cd back && npm test` | Passed: 32 suites, 140 tests (without `OPENAI_API_KEY`) |
+| `cd front && npm test` | Passed: 9 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed |
 

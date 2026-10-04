@@ -5,6 +5,7 @@ export const corsOptions = {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     origin: config.corsOrigins,
     allowedHeaders: ['Content-Type', CSRF_TOKEN_HEADER],
+    exposedHeaders: ['X-Search-Partial'],
     credentials: true,
     maxAge: 3600
 }
