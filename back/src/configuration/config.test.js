@@ -26,11 +26,15 @@ describe('runtime config validation', () => {
         expect(() => validateRuntimeConfig()).toThrow('Missing required environment variable: OPENAI_API_KEY');
     });
 
-    test('requires REGISTRATION_CODE outside local runtime', () => {
+    test('does not require a shared registration code outside local runtime', () => {
         process.env[ENV_VARS.nodeEnv] = 'production';
         delete process.env[ENV_VARS.registrationCode];
+        process.env[ENV_VARS.mailMode] = 'smtp';
+        process.env[ENV_VARS.smtpHost] = 'localhost';
+        process.env[ENV_VARS.smtpFrom] = 'noreply@example.com';
+        process.env[ENV_VARS.appUrl] = 'https://app.example.com';
 
-        expect(() => validateRuntimeConfig()).toThrow('Missing required environment variable outside local runtime: REGISTRATION_CODE');
+        expect(() => validateRuntimeConfig()).not.toThrow();
     });
 
     test('allows missing REGISTRATION_CODE locally', () => {
@@ -39,12 +43,6 @@ describe('runtime config validation', () => {
 
         expect(() => validateRuntimeConfig()).not.toThrow();
         expect(warnSpy).not.toHaveBeenCalled();
-    });
-
-    test('rejects a short production invitation code', () => {
-        process.env[ENV_VARS.nodeEnv] = 'production';
-        process.env[ENV_VARS.registrationCode] = 'short';
-        expect(() => validateRuntimeConfig()).toThrow('REGISTRATION_CODE must contain at least 24 characters');
     });
 
     test('requires configured SMTP delivery in production', () => {

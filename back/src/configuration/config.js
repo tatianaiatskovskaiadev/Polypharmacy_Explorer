@@ -35,7 +35,7 @@ const config = {
     }
 }
 
-const isLocalRuntime = () => {
+export const isLocalRuntime = () => {
     const nodeEnv = process.env[ENV_VARS.nodeEnv];
     return !nodeEnv || LOCAL_NODE_ENV_VALUES.includes(nodeEnv);
 }
@@ -45,12 +45,6 @@ export const validateRuntimeConfig = () => {
     required(ENV_VARS.dbName);
     required(ENV_VARS.openAiApiKey);
 
-    if (!process.env[ENV_VARS.registrationCode] && !isLocalRuntime()) {
-        throw new Error(`Missing required environment variable outside local runtime: ${ENV_VARS.registrationCode}`);
-    }
-    if (!isLocalRuntime() && process.env[ENV_VARS.registrationCode].length < 24) {
-        throw new Error(`${ENV_VARS.registrationCode} must contain at least 24 characters outside local runtime`);
-    }
     const mailMode = process.env[ENV_VARS.mailMode] || 'console';
     if (!['console', 'smtp'].includes(mailMode)) throw new Error('MAIL_MODE must be console or smtp');
     if (!isLocalRuntime() && mailMode !== 'smtp') throw new Error('MAIL_MODE must be smtp outside local runtime');

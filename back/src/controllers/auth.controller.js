@@ -1,12 +1,13 @@
 import {createHash, timingSafeEqual} from 'crypto';
-import config from '../configuration/config.js';
-import {ExternalServiceError, ForbiddenError} from '../utils/errors.js';
+import config, {isLocalRuntime} from '../configuration/config.js';
+import {ExternalServiceError} from '../utils/errors.js';
 import {
     authenticateUser, createSession, createUser, deleteSession, listUserSessions, revokeUserSession,
     requestPasswordReset, resendVerificationEmail, resetPassword, sendVerificationEmail, verifyEmail,
     SESSION_COOKIE_NAME, SESSION_DURATION_MS
 } from '../services/auth.service.js';
 import {getSessionToken} from '../middlewares/auth.middleware.js';
+import {claimInvitation, releaseInvitation} from '../services/invitation.service.js';
 
 const cookieOptions = () => ({
     httpOnly: true,
@@ -30,10 +31,15 @@ const startSession = async (res, user, emailDeliveryFailed = false) => {
 };
 
 export const register = async (req, res) => {
-    if (!matchesRegistrationCode(req.body.registrationCode)) {
-        throw new ForbiddenError('Invalid registration code');
+    const localSharedCode = isLocalRuntime() && matchesRegistrationCode(req.body.registrationCode);
+    const claim = localSharedCode ? null : await claimInvitation(req.body.email, req.body.registrationCode);
+    let user;
+    try {
+        user = await createUser(req.body.email, req.body.password);
+    } catch (error) {
+        if (claim) await releaseInvitation(claim);
+        throw error;
     }
-    const user = await createUser(req.body.email, req.body.password);
     let emailDeliveryFailed = false;
     try {
         await sendVerificationEmail(user);

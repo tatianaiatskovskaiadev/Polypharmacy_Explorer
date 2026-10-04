@@ -1,16 +1,22 @@
 import {afterEach, describe, expect, jest, test} from '@jest/globals';
 import request from 'supertest';
 import config from './configuration/config.js';
+import {ConflictError, ForbiddenError} from './utils/errors.js';
 
 const user = {id: '507f1f77bcf86cd799439011', email: 'person@example.com', emailVerified: true};
 const csrfToken = 'a'.repeat(64);
 let sessionActive = false;
 let emailVerifiedAt;
+const createUser = jest.fn().mockResolvedValue(user);
+const claimInvitation = jest.fn().mockResolvedValue({id: 'invitation-1', consumedAt: new Date()});
+const releaseInvitation = jest.fn().mockResolvedValue(undefined);
+
+jest.unstable_mockModule('./services/invitation.service.js', () => ({claimInvitation, releaseInvitation}));
 
 jest.unstable_mockModule('./services/auth.service.js', () => ({
     SESSION_COOKIE_NAME: 'pe_session',
     SESSION_DURATION_MS: 7 * 24 * 60 * 60 * 1000,
-    createUser: jest.fn().mockResolvedValue(user),
+    createUser,
     authenticateUser: jest.fn().mockResolvedValue(user),
     createSession: jest.fn().mockImplementation(async () => {
         sessionActive = true;
@@ -46,6 +52,43 @@ describe('API authentication flow', () => {
         config.registrationCode = previousCode;
         sessionActive = false;
         emailVerifiedAt = undefined;
+        createUser.mockReset().mockResolvedValue(user);
+        claimInvitation.mockClear();
+        releaseInvitation.mockClear();
+    });
+
+    test('requires a one-time invitation in production even when the shared code matches', async () => {
+        const previousEnvironment = process.env.NODE_ENV;
+        process.env.NODE_ENV = 'production';
+        config.registrationCode = 'shared-code';
+        try {
+            const registration = await request(app).post('/auth/register').send({
+                email: user.email, password: 'a-long-unique-password', registrationCode: 'shared-code'
+            });
+            expect(registration.status).toBe(200);
+            expect(claimInvitation).toHaveBeenCalledWith(user.email, 'shared-code');
+        } finally {
+            if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+            else process.env.NODE_ENV = previousEnvironment;
+        }
+    });
+
+    test('rejects an invalid invitation before creating an account', async () => {
+        claimInvitation.mockRejectedValueOnce(new ForbiddenError('Invalid invitation'));
+        const registration = await request(app).post('/auth/register').send({
+            email: user.email, password: 'a-long-unique-password', registrationCode: 'invalid-code'
+        });
+        expect(registration.status).toBe(403);
+        expect(createUser).not.toHaveBeenCalled();
+    });
+
+    test('releases a claimed invitation when account creation fails', async () => {
+        createUser.mockRejectedValueOnce(new ConflictError('Existing account'));
+        const registration = await request(app).post('/auth/register').send({
+            email: user.email, password: 'a-long-unique-password', registrationCode: 'valid-code'
+        });
+        expect(registration.status).toBe(409);
+        expect(releaseInvitation).toHaveBeenCalledWith(expect.objectContaining({id: 'invitation-1'}));
     });
 
     test('registers, protects writes with CSRF, and invalidates the session on logout', async () => {

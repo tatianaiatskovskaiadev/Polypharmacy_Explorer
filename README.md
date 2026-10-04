@@ -134,7 +134,8 @@ MONGO_URI=mongodb://user:password@localhost:27017/?authSource=admin
 DB_NAME=polypharmacy
 OPENAI_API_KEY=sk-...
 CORS_ORIGIN=http://localhost:5173
-REGISTRATION_CODE=replace-with-a-long-random-invitation-code
+# Optional local-development fallback only; production uses one-time invitations.
+REGISTRATION_CODE=replace-with-a-local-development-code
 APP_URL=http://localhost:5173
 MAIL_MODE=console
 ```
@@ -151,7 +152,7 @@ Frontend variable:
 VITE_API_URL=http://localhost:3000
 ```
 
-`OPENAI_API_KEY` is required at backend startup. `REGISTRATION_CODE` gates account creation and is required outside local runtime with at least 24 characters. Generate a random code for deployment, for example with `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`. Never place the code in a `VITE_` variable. Users enter it in the registration form; a shared code can be reused until it is rotated.
+`OPENAI_API_KEY` is required at backend startup. Create an email-bound, seven-day, one-time registration invitation with `cd back && npm run invite -- person@example.com`. Copy the generated code privately to that person; the registration form must use the same email. The raw code is printed once and only its SHA-256 hash is stored. A used or expired code cannot be reused. `REGISTRATION_CODE` remains an optional shared-code fallback for local development only and is ignored outside local runtime. Never place an invitation code in a `VITE_` variable. If registration fails after claiming an invitation, the API releases it for retry; after an interrupted process, an operator can issue a fresh invitation.
 
 The API stores a hashed random session token in MongoDB and sends the raw token only in a seven-day, HttpOnly cookie (`Secure` in production). `/auth/me` returns the current user and a CSRF token; the SPA includes that token on authenticated POST requests. Login and registration are rate-limited by client IP; costly endpoints are rate-limited by signed-in user. These limits still use process memory and need shared storage before running multiple API instances.
 
@@ -222,12 +223,12 @@ npm run backfill:normalized-names
 
 ## API Examples
 
-Create an account using the invitation code and save the session cookie:
+Create an account using an invitation for this email and save the session cookie:
 
 ```bash
 curl -c cookies.txt -X POST http://localhost:3000/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"person@example.com","password":"a-long-unique-password","registrationCode":"YOUR_REGISTRATION_CODE"}'
+  -d '{"email":"person@example.com","password":"a-long-unique-password","registrationCode":"YOUR_ONE_TIME_CODE"}'
 ```
 
 The JSON response contains `csrfToken`. Send it as `x-csrf-token` with the saved cookie on subsequent POST requests. New users must follow the verification link before using protected drug endpoints. Existing users can POST `email` and `password` to `/auth/login`; GET `/auth/me` restores the CSRF token after a page reload, and POST `/auth/logout` invalidates the session. The SPA also supports password reset and listing or revoking active sessions. API endpoints are `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/verify`, `POST /auth/resend-verification`, `GET /auth/sessions`, and `DELETE /auth/sessions/:sessionId`. Reset links expire after 30 minutes, verification links after 24 hours, and using a reset link revokes all sessions.
@@ -341,7 +342,7 @@ Latest local validation:
 
 | Command | Result |
 | --- | --- |
-| `cd back && npm test` | Passed: 23 suites, 97 tests |
+| `cd back && npm test` | Passed: 25 suites, 103 tests |
 | `cd front && npm run build` | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint` | Passed |
 
@@ -379,7 +380,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - **Express app and server bootstrap are separated.** `src/app.js` can be imported by tests without opening a network port.
 - **openFDA calls use retry/backoff and best-effort degradation.** Rate-limited or unavailable FDA calls do not fail the entire interaction check; cached/successful interactions are still returned.
 - **API sessions gate costly endpoints.** Signed-in users send an HttpOnly session cookie and CSRF header; rate limits are keyed by user. Login and registration have separate IP-based limits.
-- **Runtime configuration fails fast.** The backend refuses to start without `OPENAI_API_KEY`; non-local runtimes also require a long `REGISTRATION_CODE`.
+- **Runtime configuration fails fast.** The backend refuses to start without `OPENAI_API_KEY`; production requires SMTP delivery and an HTTPS SPA origin.
 
 ## Limitations
 
@@ -387,7 +388,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - A missing graph edge means no interaction record was found or returned for that pair; it does not prove the combination is safe.
 - Backend is JavaScript while frontend is TypeScript; backend TypeScript migration is a future improvement.
 - AWS deployment is not implemented in this repository; production email delivery requires external SMTP configuration.
-- The registration code is shared until rotated, and email delivery is not queued or retried after a provider outage.
+- The optional local development code is shared until rotated. Invitation issuance is a CLI operation; email delivery is not queued or retried after a provider outage.
 - API requests have generated IDs and JSON completion/error logs without URLs, query strings, bodies, or headers. Service-level logs, metrics, and tracing are not fully implemented yet.
 - Docker Compose is not included yet.
 - CI exists for backend tests and frontend build/lint, but deployment/CD and Docker image build checks are not configured yet.
@@ -401,7 +402,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 
 ## Roadmap
 
-1. Harden account delivery with one-time invitations, reliable email delivery, and a deployment-ready domain and proxy configuration.
+1. Harden account delivery with reliable email delivery and a deployment-ready domain and proxy configuration.
 2. Strengthen evidence presentation and evaluation. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; test insufficient-evidence behavior and citation quality against a fixed set of example questions.
 3. Improve reliability and observability. Extend structured logging to service failures and add request/cost metrics. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
 4. Add frontend regression tests and polish the graph layout, empty states, per-pair progress, and interaction details. Fix the graph's viewport-sized container within the page layout.
