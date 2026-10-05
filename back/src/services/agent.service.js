@@ -1,7 +1,7 @@
 import {completeAgentTurn} from './ai.service.js';
 import {AGENT_TOOLS, createAgentTools} from './agent-tools.service.js';
 import {AGENT_MAX_TOOL_CALLS, AGENT_MAX_TOOL_ROUNDS, AGENT_PROMPT_VERSION} from '../utils/constants.js';
-import {recordPromptVersion, recordResult, recordToolCall} from '../eval/metrics.js';
+import {currentTrace, recordPromptVersion, recordResult, recordToolCall} from '../eval/metrics.js';
 
 const INSUFFICIENT_EVIDENCE = 'The indexed FDA label excerpts do not provide enough evidence to answer this question.';
 
@@ -41,9 +41,17 @@ const buildResult = (answer, sources, toolCalls) => {
     return result;
 };
 
-export const askAgent = async (question, drugIds, dependencies = {completeAgentTurn, createAgentTools}) => {
+export const executeAgent = async (question, drugIds, {
+    dependencies = {completeAgentTurn, createAgentTools},
+    onEvent = null,
+    signal
+} = {}) => {
     recordPromptVersion(AGENT_PROMPT_VERSION);
-    const tools = dependencies.createAgentTools(drugIds);
+    const emit = (event, data = {}) => {
+        signal?.throwIfAborted();
+        onEvent?.(event, data);
+    };
+    const tools = dependencies.createAgentTools(drugIds, {signal});
     const toolCalls = [];
     const messages = [
         {
@@ -53,10 +61,41 @@ export const askAgent = async (question, drugIds, dependencies = {completeAgentT
         {role: 'user', content: question}
     ];
 
+    emit('agent.started');
+    let generationStarted = false;
+    const startGeneration = () => {
+        if (!generationStarted) {
+            emit('generation.started');
+            generationStarted = true;
+        }
+    };
+    const complete = async (answer) => {
+        const result = buildResult(answer, tools.sources, toolCalls);
+        if (onEvent) {
+            for (const text of result.answer.match(/.{1,80}(?:\s|$)|.{1,80}/gs) ?? []) {
+                emit('answer.delta', {text});
+                await new Promise((resolve) => setImmediate(resolve));
+            }
+        }
+        emit('sources', {sources: result.sources});
+        emit('agent.completed', {
+            traceId: currentTrace()?.traceId ?? null,
+            promptVersion: result.promptVersion,
+            result
+        });
+        return result;
+    };
+
     for (let round = 0; round < AGENT_MAX_TOOL_ROUNDS; round++) {
-        const message = await dependencies.completeAgentTurn(messages, AGENT_TOOLS, round === 0 ? 'required' : 'auto');
+        if (round > 0) startGeneration();
+        signal?.throwIfAborted();
+        const message = await dependencies.completeAgentTurn(messages, AGENT_TOOLS, round === 0 ? 'required' : 'auto', {signal});
+        signal?.throwIfAborted();
         const calls = message.tool_calls ?? [];
-        if (calls.length === 0) return buildResult(message.content ?? '', tools.sources, toolCalls);
+        if (calls.length === 0) {
+            startGeneration();
+            return await complete(message.content ?? '');
+        }
         if (toolCalls.length + calls.length > AGENT_MAX_TOOL_CALLS) break;
 
         messages.push(message);
@@ -64,19 +103,34 @@ export const askAgent = async (question, drugIds, dependencies = {completeAgentT
             const name = call.function?.name;
             const args = parseArguments(call.function?.arguments ?? '');
             const startedAt = performance.now();
+            emit('tool.started', {tool: name, callId: call.id});
             let output;
             try {
                 output = args ? await tools.execute(name, args) : {error: 'Invalid tool arguments'};
             } catch (error) {
+                if (signal?.aborted) throw error;
                 output = {error: error.name === 'ExternalServiceError' ? 'External service unavailable' : 'Tool failed'};
             }
+            signal?.throwIfAborted();
             const status = output.error ? 'error' : 'ok';
+            const durationMs = Math.round(performance.now() - startedAt);
             toolCalls.push({name, status});
-            recordToolCall(name, status, Math.round(performance.now() - startedAt));
+            recordToolCall(name, status, durationMs);
+            emit('tool.completed', {tool: name, callId: call.id, durationMs, status});
+            if (name === 'search_fda_passages' && status === 'ok') {
+                emit('retrieval.completed', {sourceCount: output.passages.length});
+            }
             messages.push({role: 'tool', tool_call_id: call.id, content: JSON.stringify(output)});
         }
     }
 
-    const finalMessage = await dependencies.completeAgentTurn(messages, AGENT_TOOLS, 'none');
-    return buildResult(finalMessage.content ?? '', tools.sources, toolCalls);
+    startGeneration();
+    signal?.throwIfAborted();
+    const finalMessage = await dependencies.completeAgentTurn(messages, AGENT_TOOLS, 'none', {signal});
+    signal?.throwIfAborted();
+    return await complete(finalMessage.content ?? '');
 };
+
+export const askAgent = (question, drugIds, dependencies = {completeAgentTurn, createAgentTools}) => (
+    executeAgent(question, drugIds, {dependencies})
+);

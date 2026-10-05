@@ -16,7 +16,7 @@ jest.unstable_mockModule('openai', () => ({
     }))
 }));
 
-const {createVector, normalizeInteractionText} = await import('./ai.service.js');
+const {completeAgentTurn, createVector, normalizeInteractionText} = await import('./ai.service.js');
 
 describe('ai service', () => {
     beforeEach(() => {
@@ -55,6 +55,17 @@ describe('ai service', () => {
             outputTokens: 0,
             estimatedCost: 0.000001
         }));
+    });
+
+    test('passes an abort signal to agent model calls', async () => {
+        const controller = new AbortController();
+        chatCompletionsCreate.mockResolvedValueOnce({choices: [{message: {content: 'Answer'}}]});
+
+        await completeAgentTurn([{role: 'user', content: 'Question'}], [], 'none', {signal: controller.signal});
+
+        expect(chatCompletionsCreate).toHaveBeenCalledWith(expect.objectContaining({tool_choice: 'none'}), {
+            signal: controller.signal
+        });
     });
 
     test('maps OpenAI embedding failures to ExternalServiceError', async () => {

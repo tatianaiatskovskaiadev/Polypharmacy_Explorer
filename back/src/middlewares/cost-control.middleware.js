@@ -7,9 +7,12 @@ import {TooManyRequestsError} from "../utils/errors.js";
 const requestBuckets = new Map();
 const authBuckets = new Map();
 
-const getClientKey = (req) => (
-    `${req.user.id}:${req.method}:${req.originalUrl || req.path}`
-);
+const getClientKey = (req) => {
+    const route = ['/agent/ask', '/agent/ask/stream'].includes(req.path)
+        ? '/agent/ask'
+        : req.originalUrl || req.path;
+    return `${req.user.id}:${req.method}:${route}`;
+};
 
 const enforceRateLimit = (req, next) => {
     const now = Date.now();

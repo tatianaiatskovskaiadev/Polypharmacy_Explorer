@@ -154,6 +154,14 @@ describe('API authentication flow', () => {
             });
         expect(tooManyAgentDrugs.status).toBe(400);
 
+        const streamWithoutCsrf = await request(app).post('/agent/ask/stream').set('Cookie', cookie)
+            .send({question: 'What interactions are described?', drugIds: ['507f1f77bcf86cd799439011']});
+        expect(streamWithoutCsrf.status).toBe(403);
+
+        const invalidStream = await request(app).post('/agent/ask/stream').set('Cookie', cookie)
+            .set('x-csrf-token', csrfToken).send({question: 'Hi', drugIds: ['invalid']});
+        expect(invalidStream.status).toBe(400);
+
         const logout = await request(app).post('/auth/logout').set('Cookie', cookie)
             .set('x-csrf-token', csrfToken);
         expect(logout.status).toBe(204);

@@ -11,7 +11,7 @@ jest.unstable_mockModule('../repository/drug.repository.js', () => ({getDrugsByI
 jest.unstable_mockModule('../repository/fda-passage.repository.js', () => ({searchPassages}));
 jest.unstable_mockModule('./interaction.service.js', () => ({checkInteraction}));
 
-const {askAgent} = await import('./agent.service.js');
+const {askAgent, executeAgent} = await import('./agent.service.js');
 
 describe('drug agent', () => {
     beforeEach(() => {
@@ -92,5 +92,69 @@ describe('drug agent', () => {
         expect(checkInteraction).toHaveBeenCalledWith(['drug-1', 'drug-2']);
         expect(result.toolCalls).toEqual([{name: 'check_selected_interactions', status: 'ok'}]);
         expect(result.sources).toEqual([]);
+    });
+
+    test('streams operational events and the same citation-gated result as the JSON path', async () => {
+        const passage = {
+            number: 1, drugName: 'Drug A', section: 'warnings', text: 'Label evidence',
+            sourceUrl: 'https://example.com/label', score: 0.9
+        };
+        const dependencies = () => {
+            const turns = [
+                {tool_calls: [{id: 'call-1', function: {name: 'search_fda_passages', arguments: '{"query":"risk"}'}}]},
+                {content: 'The label describes a risk [1].'}
+            ];
+            return {
+                completeAgentTurn: async () => turns.shift(),
+                createAgentTools: () => ({
+                    sources: [passage],
+                    execute: async () => ({passages: [passage]})
+                })
+            };
+        };
+        const normal = await askAgent('What risk?', ['drug-1'], dependencies());
+        const events = [];
+        const streamed = await executeAgent('What risk?', ['drug-1'], {
+            dependencies: dependencies(),
+            onEvent: (event, data) => events.push({event, data})
+        });
+
+        expect(streamed).toEqual(normal);
+        expect(events.map(({event}) => event)).toEqual([
+            'agent.started', 'tool.started', 'tool.completed', 'retrieval.completed',
+            'generation.started', 'answer.delta', 'sources', 'agent.completed'
+        ]);
+        expect(events.find(({event}) => event === 'tool.completed').data).toEqual(expect.objectContaining({
+            tool: 'search_fda_passages', callId: 'call-1', status: 'ok', durationMs: expect.any(Number)
+        }));
+        expect(events.find(({event}) => event === 'agent.completed').data.result).toEqual(normal);
+    });
+
+    test('does not stream an ungrounded draft and stops after cancellation', async () => {
+        const events = [];
+        await executeAgent('What risk?', ['drug-1'], {
+            dependencies: {
+                completeAgentTurn: async () => ({content: 'Unsupported claim [2].'}),
+                createAgentTools: () => ({sources: [{number: 1}], execute: async () => ({})})
+            },
+            onEvent: (event, data) => events.push({event, data})
+        });
+        expect(events.filter(({event}) => event === 'answer.delta').map(({data}) => data.text).join(''))
+            .toContain('do not provide enough evidence');
+        expect(JSON.stringify(events)).not.toContain('Unsupported claim');
+
+        const controller = new AbortController();
+        const completeTurn = jest.fn();
+        await expect(executeAgent('What risk?', ['drug-1'], {
+            signal: controller.signal,
+            dependencies: {
+                completeAgentTurn: completeTurn,
+                createAgentTools: () => ({sources: [], execute: async () => ({})})
+            },
+            onEvent: (event) => {
+                if (event === 'agent.started') controller.abort();
+            }
+        })).rejects.toMatchObject({name: 'AbortError'});
+        expect(completeTurn).not.toHaveBeenCalled();
     });
 });

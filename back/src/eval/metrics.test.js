@@ -5,6 +5,7 @@ import {
     recordPromptVersion,
     recordResult,
     recordRetrieval,
+    recordStreamEvent,
     recordToolCall,
     runWithTrace
 } from './metrics.js';
@@ -63,5 +64,16 @@ describe('AI trace metrics', () => {
         expect(traces.map(({traceId, retrieval}) => [traceId, retrieval.documentsRetrieved])).toEqual([
             ['first', 1], ['second', 0]
         ]);
+    });
+
+    test('measures first SSE event and first validated answer chunk', () => {
+        const trace = runWithTrace('stream-trace', () => {
+            recordStreamEvent('agent.started');
+            recordStreamEvent('answer.delta');
+            return getTraceMetrics();
+        });
+        expect(trace.timeToFirstEventMs).toEqual(expect.any(Number));
+        expect(trace.timeToFirstTokenMs).toEqual(expect.any(Number));
+        expect(trace.timeToFirstTokenMs).toBeGreaterThanOrEqual(trace.timeToFirstEventMs);
     });
 });

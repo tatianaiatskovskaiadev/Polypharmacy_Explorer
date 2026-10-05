@@ -39,15 +39,17 @@ export const AGENT_TOOLS = [
     }
 ];
 
-export const createAgentTools = (drugIds) => {
+export const createAgentTools = (drugIds, {signal} = {}) => {
     const sources = [];
     let searchCount = 0;
     let interactionChecked = false;
 
     const execute = async (name, args) => {
+        signal?.throwIfAborted();
         if (name === 'get_selected_drugs') {
             if (Object.keys(args).length !== 0) return {error: 'No arguments are allowed'};
             const drugs = await drugRepository.getDrugsByIds(drugIds);
+            signal?.throwIfAborted();
             return {drugs: drugs.map(({_id, name: drugName, activeIngredient}) => ({
                 drugId: String(_id), name: drugName, activeIngredient
             }))};
@@ -58,6 +60,7 @@ export const createAgentTools = (drugIds) => {
             if (interactionChecked) return {error: 'Interaction check already completed'};
             interactionChecked = true;
             const result = await interactionService.checkInteraction(drugIds);
+            signal?.throwIfAborted();
             return {
                 interactions: result.interactions.map((interaction) => ({
                     drugA: String(interaction.drugA),
@@ -77,8 +80,10 @@ export const createAgentTools = (drugIds) => {
             }
             if (searchCount >= 2) return {error: 'FDA passage search limit reached'};
             searchCount++;
-            const vector = await createVector(args.query.trim());
+            const vector = await createVector(args.query.trim(), {signal});
+            signal?.throwIfAborted();
             const passages = await passageRepository.searchPassages(vector, drugIds);
+            signal?.throwIfAborted();
             recordRetrieval(passages);
             const matches = passages.map((passage) => {
                 const passageId = String(passage._id);

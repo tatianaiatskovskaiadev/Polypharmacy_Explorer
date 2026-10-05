@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {
     useAskAgentMutation,
     useAnswerQuestionMutation,
@@ -10,7 +10,25 @@ import List from "./List.tsx";
 import GraphView from "./GraphView.tsx";
 import EvidenceAnswer from './EvidenceAnswer.tsx';
 import type {Drug, Interaction} from "../utils/types";
+import type {AgentAnswerResponse, RagSource} from '../utils/types';
 import {isPubChemOnlyDrug} from "../utils/drugEvidence.ts";
+import {AgentStreamError, streamAgentAnswer} from '../features/api/agentStream.ts';
+import type {AgentStreamEvent} from '../features/api/agentStream.ts';
+import {useAppDispatch, useAppSelector} from '../app/hooks.ts';
+import {clearSession} from '../features/auth/authSlice.ts';
+
+type StreamPhase = 'idle' | 'planning' | 'using_tool' | 'retrieving' | 'generating' | 'complete' | 'error' | 'disconnected';
+
+const STREAM_MESSAGES: Record<StreamPhase, string> = {
+    idle: '',
+    planning: 'Analyzing selected medications…',
+    using_tool: 'Checking interaction evidence…',
+    retrieving: 'Retrieving FDA label passages…',
+    generating: 'Generating evidence-grounded answer…',
+    complete: 'Answer complete.',
+    error: 'The stream stopped with an error.',
+    disconnected: 'Streaming stopped or connection lost.'
+};
 
 type ApiError = {
     status?: number | string;
@@ -37,6 +55,16 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 };
 
 const SearchPanel = () => {
+    const dispatch = useAppDispatch();
+    const csrfToken = useAppSelector((state) => state.auth?.csrfToken ?? '');
+    const streamController = useRef<AbortController | null>(null);
+    const streamVersion = useRef(0);
+    const [streamPhase, setStreamPhase] = useState<StreamPhase>('idle');
+    const [streamAnswer, setStreamAnswer] = useState('');
+    const [streamSources, setStreamSources] = useState<RagSource[]>([]);
+    const [streamResult, setStreamResult] = useState<AgentAnswerResponse | null>(null);
+    const [streamError, setStreamError] = useState('');
+    const [streamSourceCount, setStreamSourceCount] = useState(0);
     const [activeDrugs, setActiveDrugs] = useState<Drug[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [getDrugs, {data: searchResponse, isLoading, isError, error: searchError}] = useLazyGetDrugsQuery();
@@ -84,9 +112,69 @@ const SearchPanel = () => {
         }
     }, [activeDrugs, getInteractions]);
 
+    useEffect(() => () => streamController.current?.abort(), []);
+
+    const resetStream = () => {
+        streamVersion.current++;
+        streamController.current?.abort();
+        streamController.current = null;
+        setStreamPhase('idle');
+        setStreamAnswer('');
+        setStreamSources([]);
+        setStreamResult(null);
+        setStreamError('');
+        setStreamSourceCount(0);
+    };
+
+    const startStream = async () => {
+        resetStream();
+        resetAnswer();
+        resetAgent();
+        const controller = new AbortController();
+        streamController.current = controller;
+        const version = streamVersion.current;
+        setStreamPhase('planning');
+        const onEvent = (event: AgentStreamEvent) => {
+            if (version !== streamVersion.current) return;
+            if (event.event === 'tool.started') {
+                setStreamPhase(event.data.tool === 'search_fda_passages' ? 'retrieving' : 'using_tool');
+            } else if (event.event === 'retrieval.completed') {
+                setStreamSourceCount(event.data.sourceCount);
+                setStreamPhase('retrieving');
+            } else if (event.event === 'generation.started') {
+                setStreamPhase('generating');
+            } else if (event.event === 'answer.delta') {
+                setStreamAnswer((answer) => answer + event.data.text);
+            } else if (event.event === 'sources') {
+                setStreamSources(event.data.sources);
+            } else if (event.event === 'agent.completed') {
+                setStreamResult(event.data.result);
+                setStreamPhase('complete');
+            }
+        };
+        try {
+            await streamAgentAnswer({question: question.trim(), drugIds: activeDrugs.map((drug) => drug._id)},
+                csrfToken, onEvent, controller.signal);
+        } catch (error) {
+            if (version !== streamVersion.current) return;
+            setStreamAnswer('');
+            setStreamSources([]);
+            if (controller.signal.aborted || (error instanceof AgentStreamError && error.code === 'DISCONNECTED')) {
+                setStreamPhase('disconnected');
+            } else {
+                if (error instanceof AgentStreamError && error.status === 401) dispatch(clearSession());
+                setStreamError(error instanceof Error ? error.message : 'Unable to run the drug agent.');
+                setStreamPhase('error');
+            }
+        } finally {
+            if (streamController.current === controller) streamController.current = null;
+        }
+    };
+
     const handleAddDrug = (newDrug: Drug) => {
         resetAnswer();
         resetAgent();
+        resetStream();
         setActiveDrugs((prev) => {
             if (prev.some((drug) => drug._id === newDrug._id)) return prev;
             return [...prev, newDrug];
@@ -96,10 +184,12 @@ const SearchPanel = () => {
     const handleRemoveDrug = (drugId: string) => {
         resetAnswer();
         resetAgent();
+        resetStream();
         setActiveDrugs((prev) => prev.filter((drug) => drug._id !== drugId));
     };
 
     const activeDrugIds = new Set(activeDrugs.map((drug) => drug._id));
+    const isStreaming = ['planning', 'using_tool', 'retrieving', 'generating'].includes(streamPhase);
 
     const visibleInteractions: Interaction[] = (interactionResponse?.interactions ?? []).filter(
         (interaction) =>
@@ -192,6 +282,7 @@ const SearchPanel = () => {
                     event.preventDefault();
                     if (question.trim().length < 5 || activeDrugs.length === 0) return;
                     resetAgent();
+                    resetStream();
                     askQuestion({question: question.trim(), drugIds: activeDrugs.map((drug) => drug._id)});
                 }}
             >
@@ -215,14 +306,25 @@ const SearchPanel = () => {
                 <button
                     className="mt-2 ml-2 rounded-md border border-gray-300 px-3 py-2"
                     type="button"
-                    disabled={isLoadingAgent || activeDrugs.length === 0 || activeDrugs.length > 4 || question.trim().length < 5}
+                    disabled={isLoadingAgent || isStreaming || activeDrugs.length === 0 || activeDrugs.length > 4 || question.trim().length < 5}
                     onClick={() => {
                         resetAnswer();
+                        resetStream();
                         askAgent({question: question.trim(), drugIds: activeDrugs.map((drug) => drug._id)});
                     }}
                 >
                     {isLoadingAgent ? 'Using tools...' : 'Ask agent'}
                 </button>
+                <button
+                    className="mt-2 ml-2 rounded-md border border-gray-300 px-3 py-2"
+                    type="button"
+                    disabled={isLoadingAgent || isStreaming || activeDrugs.length === 0 || activeDrugs.length > 4 || question.trim().length < 5}
+                    onClick={startStream}
+                >Stream agent</button>
+                {isStreaming ? (
+                    <button className="mt-2 ml-2 rounded-md border border-gray-300 px-3 py-2" type="button"
+                            onClick={() => streamController.current?.abort()}>Stop streaming</button>
+                ) : null}
                 {activeDrugs.length === 0 ? <p className="mt-2 text-sm text-gray-600">Select a drug first.</p> : null}
                 {activeDrugs.length > 4 ? <p className="mt-2 text-sm text-gray-600">The agent supports up to four selected drugs.</p> : null}
             </form>
@@ -236,6 +338,13 @@ const SearchPanel = () => {
                     {getApiErrorMessage(agentError, 'Unable to run the drug agent.')}
                 </div>
             ) : null}
+            {streamPhase !== 'idle' ? (
+                <p className="m-2 text-sm text-gray-700" role="status">
+                    {STREAM_MESSAGES[streamPhase]}
+                    {streamPhase === 'retrieving' && streamSourceCount > 0 ? ` ${streamSourceCount} passages found.` : ''}
+                </p>
+            ) : null}
+            {streamError ? <p className="m-2 text-sm text-red-700" role="alert">{streamError}</p> : null}
             {ragResult && !isLoadingAnswer ? (
                 <EvidenceAnswer title="Answer from FDA labels" answer={ragResult.answer} sources={ragResult.sources} pubChemOnlyDrugNames={pubChemOnlyDrugNames}/>
             ) : null}
@@ -246,6 +355,15 @@ const SearchPanel = () => {
                     sources={agentResult.sources}
                     pubChemOnlyDrugNames={pubChemOnlyDrugNames}
                     toolCalls={agentResult.toolCalls}
+                />
+            ) : null}
+            {(streamAnswer || streamResult) && streamPhase !== 'error' && streamPhase !== 'disconnected' ? (
+                <EvidenceAnswer
+                    title="Streaming agent answer from FDA labels"
+                    answer={streamResult?.answer ?? streamAnswer}
+                    sources={streamResult?.sources ?? streamSources}
+                    pubChemOnlyDrugNames={pubChemOnlyDrugNames}
+                    toolCalls={streamResult?.toolCalls}
                 />
             ) : null}
             {isLoadingInteractions ? (

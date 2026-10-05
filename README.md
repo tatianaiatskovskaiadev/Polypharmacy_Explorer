@@ -332,9 +332,13 @@ curl -X POST http://localhost:3000/agent/ask \
 
 The agent chooses among three server-side tools: selected drug lookup, pairwise interaction checking, and FDA passage retrieval. Its response adds `toolCalls` to the RAG answer format. Tool access is restricted to the selected drug IDs; the interaction check runs at most once and FDA retrieval at most twice per request. Answers without valid FDA passage citations return an insufficient-evidence response. Cached interaction summaries help the agent find evidence but are not treated as citations.
 
+For progress updates, `POST /agent/ask/stream` accepts the same JSON body and the same session cookie and CSRF header. It applies the same validation and rate limit as `/agent/ask`. The response is `text/event-stream` with `agent.started`, `tool.started`, `tool.completed`, `retrieval.completed`, `generation.started`, `answer.delta`, `sources`, and `agent.completed` events. The last event includes the full `result` object with the same `answer`, `sources`, `toolCalls`, and `promptVersion` contract as the JSON endpoint. Failures after the stream opens use an `error` event with a safe code, message, and trace ID. Closing the stream cancels active OpenAI calls and stops work at the next cancellation check; interaction and database operations already in progress may finish before cancellation takes effect.
+
+The agent validates the full answer against retrieved citation numbers before sending any `answer.delta` text. The browser sees live tool and retrieval progress, then receives the validated answer in chunks. This does not expose chain-of-thought or raw, unchecked model tokens. The frontend keeps the original “Ask agent” button and adds “Stream agent” and “Stop streaming”.
+
 ## LLMOps Foundation
 
-AI requests emit an `ai_request_complete` JSON log with a `traceId` matching the `X-Request-Id` response header. It records the models used, prompt version, total latency, provider-reported input/output tokens, estimated USD cost, retrieval counts and scores, agent tool statuses and latencies, and result citation/validation flags. Questions, excerpts, answers, cookies, and API keys are not logged. `model` is a list because one request can use both an embedding model and a chat model. `citationCount` counts distinct returned sources; `validationPassed` records whether the citation gate accepted the result. For non-answer AI operations, answer-specific fields are `null`.
+AI requests emit an `ai_request_complete` JSON log with a `traceId` matching the `X-Request-Id` response header. It records the models used, prompt version, total latency, provider-reported input/output tokens, estimated USD cost, retrieval counts and scores, agent tool statuses and latencies, and result citation/validation flags. Streaming traces also include `timeToFirstEventMs` and `timeToFirstTokenMs`; the latter measures the first validated answer chunk, after full-answer citation checks. Questions, excerpts, answers, cookies, and API keys are not logged. `model` is a list because one request can use both an embedding model and a chat model. `citationCount` counts distinct returned sources; `validationPassed` records whether the citation gate accepted the result. For non-answer AI operations, answer-specific fields are `null`.
 
 Cost uses provider-reported usage and the current configured model rates: `gpt-4o-mini` input $0.15, cached input $0.075, output $0.60 per million tokens, and `text-embedding-3-small` input $0.02 per million tokens ([chat model pricing](https://developers.openai.com/api/docs/models/gpt-4o-mini), [embedding pricing](https://developers.openai.com/api/docs/models/text-embedding-3-small)). It is an estimate, not a billing record. If usage is missing or the model has no configured rate, token totals and cost are `null`. Review rates when changing models or prices.
 
@@ -393,10 +397,10 @@ Latest local validation:
 
 | Command                              | Result                                 |
 |--------------------------------------|----------------------------------------|
-| `cd back && npm test -- --runInBand` | Passed: 33 suites, 145 tests           |
+| `cd back && npm test -- --runInBand` | Passed: 34 suites, 154 tests           |
 | `cd back && npm run eval:rag`       | Passed: 3 cases                        |
 | `cd back && npm run eval:agent`     | Passed: 2 cases                        |
-| `cd front && npm test`               | Passed: 9 tests                        |
+| `cd front && npm test`               | Passed: 15 tests                       |
 | `cd front && npm run build`          | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint`           | Passed                                 |
 
@@ -466,7 +470,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 ## Roadmap
 
 1. Harden account delivery with a deployment-ready domain and proxy configuration, plus mail-worker monitoring and alerting.
-2. Expand the deterministic citation evaluations with reviewed real-label cases and live model runs. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; then add SSE streaming for agent progress.
+2. Expand the deterministic citation evaluations with reviewed real-label cases and live model runs. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; then consider live token streaming with citation-safe buffering.
 3. Improve reliability and observability with persistent traces, dashboards, and alerts. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
 4. Expand frontend regression tests beyond search/add/remove flows and polish empty states, per-pair progress, and
    interaction details.

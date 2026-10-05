@@ -9,6 +9,8 @@ const USD_PER_MILLION_TOKENS = {
 export const runWithTrace = (traceId, operation) => traces.run({
     traceId,
     startedAt: performance.now(),
+    timeToFirstEventMs: null,
+    timeToFirstTokenMs: null,
     models: new Set(),
     inputTokens: 0,
     outputTokens: 0,
@@ -75,14 +77,15 @@ export const recordValidation = (passed) => {
     if (trace) trace.result.validationPassed = passed;
 };
 
-export const getTraceMetrics = () => {
-    const trace = currentTrace();
+export const getTraceMetrics = (trace = currentTrace()) => {
     if (!trace) return null;
     return {
         traceId: trace.traceId,
         model: [...trace.models],
         promptVersion: trace.promptVersion ?? null,
         latencyMs: Math.round(performance.now() - trace.startedAt),
+        timeToFirstEventMs: trace.timeToFirstEventMs,
+        timeToFirstTokenMs: trace.timeToFirstTokenMs,
         inputTokens: trace.usageComplete ? trace.inputTokens : null,
         outputTokens: trace.usageComplete ? trace.outputTokens : null,
         estimatedCost: trace.usageComplete ? Number(trace.estimatedCost.toFixed(8)) : null,
@@ -95,6 +98,15 @@ export const getTraceMetrics = () => {
 export const recordPromptVersion = (version) => {
     const trace = currentTrace();
     if (trace) trace.promptVersion = version;
+};
+
+export const recordStreamEvent = (event) => {
+    const trace = currentTrace();
+    if (!trace) return;
+    trace.timeToFirstEventMs ??= Math.round(performance.now() - trace.startedAt);
+    if (event === 'answer.delta') {
+        trace.timeToFirstTokenMs ??= Math.round(performance.now() - trace.startedAt);
+    }
 };
 
 export const scoreCase = (result, expected, trace) => {

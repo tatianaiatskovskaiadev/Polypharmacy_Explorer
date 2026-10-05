@@ -31,16 +31,17 @@ const callOpenAI = async (operation, model) => {
     }
 };
 
-export const createVector = async (originalText) => {
+export const createVector = async (originalText, {signal} = {}) => {
     const input = originalText.length > MAX_EMBEDDING_INPUT_LENGTH
         ? originalText.slice(0, MAX_EMBEDDING_INPUT_LENGTH)
         : originalText;
 
+    const requestOptions = signal ? [{signal}] : [];
     const embedding = await callOpenAI(() => getOpenAI().embeddings.create({
         model: OPENAI_EMBEDDING_MODEL,
         input,
         encoding_format: OPENAI_EMBEDDING_ENCODING_FORMAT,
-    }), OPENAI_EMBEDDING_MODEL)
+    }, ...requestOptions), OPENAI_EMBEDDING_MODEL)
     return embedding.data[0].embedding
 }
 
@@ -79,14 +80,15 @@ export const answerFromEvidence = async (question, passages) => {
     return answer.trim();
 };
 
-export const completeAgentTurn = async (messages, tools, toolChoice = 'auto') => {
+export const completeAgentTurn = async (messages, tools, toolChoice = 'auto', {signal} = {}) => {
+    const requestOptions = signal ? [{signal}] : [];
     const response = await callOpenAI(() => getOpenAI().chat.completions.create({
         model: OPENAI_CHAT_MODEL,
         messages,
         tools,
         tool_choice: toolChoice,
         temperature: 0
-    }), OPENAI_CHAT_MODEL);
+    }, ...requestOptions), OPENAI_CHAT_MODEL);
     const message = response.choices[0]?.message;
     if (!message) throw new ExternalServiceError('LLM returned no agent message');
     return message;

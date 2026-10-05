@@ -21,7 +21,8 @@ const EXPENSIVE_ENDPOINTS = [
     '/interactions/check',
     '/interactions/sync',
     '/rag/answer',
-    '/agent/ask'
+    '/agent/ask',
+    '/agent/ask/stream'
 ];
 
 app.use(requestLogging);

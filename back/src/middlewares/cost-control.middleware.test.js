@@ -40,4 +40,18 @@ describe('cost-control middleware', () => {
         protectAuthEndpoint(req, {}, next);
         expect(next).toHaveBeenLastCalledWith(expect.objectContaining({statusCode: 429}));
     });
+
+    test('shares the agent rate limit between JSON and SSE routes', () => {
+        const user = {id: randomUUID()};
+        const next = jest.fn();
+        const normal = createRequest({user, path: '/agent/ask', originalUrl: '/agent/ask'});
+        const stream = createRequest({user, path: '/agent/ask/stream', originalUrl: '/agent/ask/stream'});
+
+        for (let index = 0; index < EXPENSIVE_ENDPOINT_RATE_LIMIT_MAX_REQUESTS; index++) {
+            protectExpensiveEndpoint(index % 2 ? normal : stream, {}, next);
+        }
+        protectExpensiveEndpoint(stream, {}, next);
+
+        expect(next).toHaveBeenLastCalledWith(expect.objectContaining({statusCode: 429}));
+    });
 });

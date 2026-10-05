@@ -46,6 +46,15 @@ describe('app', () => {
         expect(response.body.path).toBe('/agent/ask');
     });
 
+    test('requires a session for streaming agent requests', async () => {
+        const response = await request(app).post('/agent/ask/stream').send({
+            question: 'What do the selected labels say?',
+            drugIds: ['507f1f77bcf86cd799439011']
+        });
+        expect(response.status).toBe(401);
+        expect(response.body.path).toBe('/agent/ask/stream');
+    });
+
     test('rejects malformed registration before reaching the database', async () => {
         const response = await request(app).post('/auth/register').send({email: 'invalid', password: 'short'});
         expect(response.status).toBe(400);
