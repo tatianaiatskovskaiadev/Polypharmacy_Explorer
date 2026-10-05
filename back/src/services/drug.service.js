@@ -393,7 +393,9 @@ export const searchDrugsBySymptom = async (symptom, drugIds) => {
         ? await drugRepository.getDrug(vectorSymptom, drugIds)
         : [];
 
-    const interactions = await interactionRepository.searchInteractionsByText(symptom, drugIds);
+    const interactions = Array.isArray(vectorSymptom) && vectorSymptom.length > 0
+        ? await interactionRepository.searchInteractionsByVector(vectorSymptom, drugIds)
+        : [];
 
     return {
         drugs,

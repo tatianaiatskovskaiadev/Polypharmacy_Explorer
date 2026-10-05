@@ -2,24 +2,28 @@ import {beforeEach, describe, expect, jest, test} from '@jest/globals';
 
 const findOne = jest.fn();
 const findOneAndUpdate = jest.fn();
+const aggregate = jest.fn();
 
 jest.unstable_mockModule('../models/Interaction.model.js', () => ({
     Interaction: {
         findOne,
-        findOneAndUpdate
+        findOneAndUpdate,
+        aggregate
     }
 }));
 
 const {
     getInteractionPair,
     toCanonicalPair,
-    upsertInteraction
+    upsertInteraction,
+    searchInteractionsByVector
 } = await import('./interaction.repository.js');
 
 describe('interaction repository', () => {
     beforeEach(() => {
         findOne.mockReset();
         findOneAndUpdate.mockReset();
+        aggregate.mockReset();
     });
 
     test('canonical pair is stable for reversed ids', () => {
@@ -55,5 +59,31 @@ describe('interaction repository', () => {
                 {drugA: 'drug-b', drugB: 'drug-a'}
             ]
         });
+    });
+
+    test('searches only selected interaction pairs with a vector score cutoff', async () => {
+        aggregate.mockResolvedValueOnce([{description: 'Elevation of prothrombin times', score: 0.8}]);
+        const ids = ['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012', '507f1f77bcf86cd799439013'];
+
+        await expect(searchInteractionsByVector([0.1, 0.2], ids)).resolves.toHaveLength(1);
+        const pipeline = aggregate.mock.calls[0][0];
+        expect(pipeline[0].$vectorSearch).toMatchObject({
+            index: 'interaction_vector_index',
+            path: 'embedding',
+            queryVector: [0.1, 0.2],
+            limit: 3,
+            filter: {
+                drugA: {$in: expect.any(Array)},
+                drugB: {$in: expect.any(Array)}
+            }
+        });
+        expect(pipeline[1]).toEqual({$set: {score: {$meta: 'vectorSearchScore'}}});
+        expect(pipeline[2]).toEqual({$match: {score: {$gte: 0.6}}});
+        expect(pipeline[3].$project).toMatchObject({embedding: 0, searchText: 0});
+    });
+
+    test('does not query vectors when fewer than two drugs are selected', async () => {
+        await expect(searchInteractionsByVector([0.1], ['507f1f77bcf86cd799439011'])).resolves.toEqual([]);
+        expect(aggregate).not.toHaveBeenCalled();
     });
 });

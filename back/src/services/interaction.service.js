@@ -1,11 +1,12 @@
 import {fetchInteractionFromFDA} from "./fda.service.js";
 import {fetchInteractionFromDailyMed} from './dailymed.service.js';
-import {normalizeInteractionText} from "./ai.service.js";
+import {createVector, normalizeInteractionText} from "./ai.service.js";
 import * as interactionRepository from "../repository/interaction.repository.js";
 import * as drugRepository from "../repository/drug.repository.js";
-import {COLOR_BY_RISK, INTERACTION_ANALYSIS_VERSION, INTERACTION_SYNC_CONCURRENCY} from "../utils/constants.js";
+import {COLOR_BY_RISK, INTERACTION_ANALYSIS_VERSION, INTERACTION_SYNC_CONCURRENCY, OPENAI_EMBEDDING_MODEL} from "../utils/constants.js";
 import {ExternalServiceError} from "../utils/errors.js";
 import {runWithConcurrency} from '../utils/concurrency.js';
+import {buildInteractionSearchText} from './interaction-search.service.js';
 
 const inFlightInteractionSyncs = new Map();
 
@@ -93,6 +94,14 @@ const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB
     }
 
     const {riskLevel, description, actionRequired} = normalizedInteraction;
+    const searchText = buildInteractionSearchText(normalizedInteraction);
+    let embedding = [];
+    try {
+        embedding = await createVector(searchText);
+    } catch (error) {
+        if (!(error instanceof ExternalServiceError)) throw error;
+        console.error('Interaction embedding failed:', error);
+    }
 
     return await interactionRepository.upsertInteraction({
         drugA: drugIdA,
@@ -101,6 +110,9 @@ const syncInteractionWithoutLock = async (drugIdA, drugIdB, drugNameA, drugNameB
         colorCode: COLOR_BY_RISK[riskLevel],
         description,
         actionRequired,
+        searchText,
+        embedding,
+        embeddingModel: embedding.length > 0 ? OPENAI_EMBEDDING_MODEL : undefined,
         source: evidence.source,
         sourceUrl: evidence.sourceUrl,
         sourceText: evidence.text,

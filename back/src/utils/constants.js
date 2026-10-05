@@ -64,6 +64,9 @@ export const VECTOR_SEARCH_INDEX = 'vector_index';
 export const DRUG_EMBEDDING_PATH = 'guidelines.embedding';
 export const VECTOR_SIMILARITY_THRESHOLD = 0.6;
 export const VECTOR_CANDIDATES_MULTIPLIER = 20;
+export const INTERACTION_VECTOR_INDEX = 'interaction_vector_index';
+export const INTERACTION_SIMILARITY_THRESHOLD = 0.6;
+export const INTERACTION_RETRIEVAL_LIMIT = 50;
 
 export const ETL_BATCH_SIZE = 2000;
 

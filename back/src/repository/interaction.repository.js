@@ -1,10 +1,15 @@
 import {Interaction} from "../models/Interaction.model.js";
+import mongoose from 'mongoose';
+import {
+    INTERACTION_RETRIEVAL_LIMIT,
+    INTERACTION_SIMILARITY_THRESHOLD,
+    INTERACTION_VECTOR_INDEX,
+    VECTOR_CANDIDATES_MULTIPLIER
+} from '../utils/constants.js';
 
 // A pair is always stored in canonical order (smaller id first) so that the unique
 // index {drugA, drugB} also protects against the reversed duplicate (B, A)
 export const toCanonicalPair = (drugIdA, drugIdB) => [String(drugIdA), String(drugIdB)].sort();
-
-const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const checkInteraction = async (drugIds) => {
     return await Interaction.find({$and: [{drugA: {$in: drugIds}}, {drugB: {$in: drugIds}}]});
@@ -29,15 +34,24 @@ export const getInteractionPair = async (drugIdA, drugIdB) => {
     });
 }
 
-export const searchInteractionsByText = async (text, drugIds) => {
-    const query = new RegExp(escapeRegex(text.trim()), 'i');
-
-    return await Interaction.find({
-        drugA: {$in: drugIds},
-        drugB: {$in: drugIds},
-        $or: [
-            {description: query},
-            {actionRequired: query}
-        ]
-    });
-}
+export const searchInteractionsByVector = async (vector, drugIds) => {
+    if (drugIds.length < 2) return [];
+    const ids = drugIds.map((id) => new mongoose.Types.ObjectId(id));
+    const pairCount = drugIds.length * (drugIds.length - 1) / 2;
+    const limit = Math.min(pairCount, INTERACTION_RETRIEVAL_LIMIT);
+    return await Interaction.aggregate([
+        {
+            $vectorSearch: {
+                index: INTERACTION_VECTOR_INDEX,
+                path: 'embedding',
+                queryVector: vector,
+                filter: {drugA: {$in: ids}, drugB: {$in: ids}},
+                numCandidates: Math.max(limit * VECTOR_CANDIDATES_MULTIPLIER, limit),
+                limit
+            }
+        },
+        {$set: {score: {$meta: 'vectorSearchScore'}}},
+        {$match: {score: {$gte: INTERACTION_SIMILARITY_THRESHOLD}}},
+        {$project: {embedding: 0, searchText: 0, embeddingModel: 0}}
+    ]);
+};

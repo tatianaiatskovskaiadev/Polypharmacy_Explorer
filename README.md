@@ -87,7 +87,7 @@ The Vite SPA is designed for static hosting on S3 behind CloudFront, with Route 
 - npm
 - MongoDB connection
 - OpenAI API key
-- MongoDB Atlas Vector Search indexes for symptom/risk search and FDA passage retrieval
+- MongoDB Atlas Vector Search indexes for drug labels, interactions, and FDA passage retrieval
 
 Basic drug search and interaction caching use MongoDB collections. The `/search/symptom` endpoint uses MongoDB
 `$vectorSearch`, so a plain local MongoDB instance is not enough for that feature unless it supports the required vector
@@ -103,7 +103,7 @@ definition (the 1536 dimensions match `text-embedding-3-small`):
 }
 ```
 
-The `/rag/answer` endpoint also requires a second Atlas Vector Search index on the `fdapassages` collection. Create it with the name `fda_passage_vector_index` and this definition (the 1536 dimensions match `text-embedding-3-small`):
+The `/rag/answer` endpoint also requires an Atlas Vector Search index on the `fdapassages` collection. Create it with the name `fda_passage_vector_index` and this definition (the 1536 dimensions match `text-embedding-3-small`):
 
 ```json
 {
@@ -113,6 +113,22 @@ The `/rag/answer` endpoint also requires a second Atlas Vector Search index on t
   ]
 }
 ```
+
+Interaction-edge symptom search requires another Atlas Vector Search index named `interaction_vector_index` on the `interactions` collection:
+
+```json
+{
+  "fields": [
+    {"type": "vector", "path": "embedding", "numDimensions": 1536, "similarity": "cosine"},
+    {"type": "filter", "path": "drugA"},
+    {"type": "filter", "path": "drugB"}
+  ]
+}
+```
+
+Newly analyzed interactions store an embedding of their summary, required action, and risk level. After creating the index, populate existing interactions with `cd back && npm run backfill:interaction-vectors -- --dry-run`, then `npm run backfill:interaction-vectors`. The backfill only embeds missing or changed text and can be rerun after interruption. Until the index is ready and old records are backfilled, interaction-edge symptom search cannot return those records.
+
+For an online semantic regression check, set `INTERACTION_EVAL_DRUG_IDS` to at least three selected drug IDs whose saved edges include descriptions containing both “elevation of prothrombin time” and “prolongation of prothrombin time”, then run `cd back && npm run eval:interaction-search`. This calls OpenAI and Atlas, checks three related phrasings and one unrelated negative case, and may require adjusting the score threshold for your data. Unit tests check the query wiring but cannot prove model recall.
 
 An uncached `/search` that processes openFDA labels indexes their passages. To populate passages for previously saved
 drugs, search again after the query cache expires (or use a new matching query) before asking questions about them. A
@@ -308,7 +324,7 @@ Response shape:
 }
 ```
 
-`drugs` comes from vector search over selected drug FDA label embeddings. `interactions` comes from saved pair summaries/actions, so symptom search can also highlight graph edges when the phrase matches an already analyzed interaction.
+`drugs` and `interactions` both come from vector search using one embedding of the symptom query. The former searches selected drug FDA labels; the latter searches saved interaction summaries/actions and only returns edges between selected drugs above the similarity threshold. This lets related wording match without a manually maintained synonym list.
 
 Ask a question grounded in indexed FDA label passages for selected drugs:
 
@@ -397,7 +413,7 @@ Latest local validation:
 
 | Command                              | Result                                 |
 |--------------------------------------|----------------------------------------|
-| `cd back && npm test -- --runInBand` | Passed: 34 suites, 154 tests           |
+| `cd back && npm test -- --runInBand` | Passed: 35 suites, 159 tests           |
 | `cd back && npm run eval:rag`       | Passed: 3 cases                        |
 | `cd back && npm run eval:agent`     | Passed: 2 cases                        |
 | `cd front && npm test`               | Passed: 15 tests                       |

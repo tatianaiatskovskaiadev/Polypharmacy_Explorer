@@ -1,0 +1,18 @@
+[
+  {
+    "query": "prothrombin time",
+    "expectedDescriptions": ["elevation of prothrombin time", "prolongation of prothrombin time"]
+  },
+  {
+    "query": "prolonged prothrombin time",
+    "expectedDescriptions": ["elevation of prothrombin time", "prolongation of prothrombin time"]
+  },
+  {
+    "query": "elevated prothrombin time",
+    "expectedDescriptions": ["elevation of prothrombin time", "prolongation of prothrombin time"]
+  },
+  {
+    "query": "fractured ankle",
+    "expectedDescriptions": []
+  }
+]

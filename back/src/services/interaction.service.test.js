@@ -8,6 +8,7 @@ const toCanonicalPair = jest.fn((drugIdA, drugIdB) => [String(drugIdA), String(d
 const fetchInteractionFromFDA = jest.fn();
 const fetchInteractionFromDailyMed = jest.fn();
 const normalizeInteractionText = jest.fn();
+const createVector = jest.fn();
 const upsertInteraction = jest.fn();
 
 jest.unstable_mockModule('../repository/drug.repository.js', () => ({
@@ -28,7 +29,8 @@ jest.unstable_mockModule('./fda.service.js', () => ({
 jest.unstable_mockModule('./dailymed.service.js', () => ({fetchInteractionFromDailyMed}));
 
 jest.unstable_mockModule('./ai.service.js', () => ({
-    normalizeInteractionText
+    normalizeInteractionText,
+    createVector
 }));
 
 const {checkInteraction, syncInteraction} = await import('./interaction.service.js');
@@ -50,6 +52,7 @@ describe('interaction service', () => {
         fetchInteractionFromFDA.mockReset();
         fetchInteractionFromDailyMed.mockReset().mockResolvedValue(null);
         normalizeInteractionText.mockReset();
+        createVector.mockReset().mockResolvedValue([0.1, 0.2]);
         upsertInteraction.mockReset();
     });
 
@@ -186,6 +189,8 @@ describe('interaction service', () => {
         expect(upsertInteraction).toHaveBeenCalledWith(expect.objectContaining({
             riskLevel: 'major',
             colorCode: 'orange',
+            searchText: 'Dose reduction is required.\nLimit dose and monitor patient.\nmajor',
+            embedding: [0.1, 0.2],
             analysisVersion: 4,
             source: 'openFDA',
             sourceUrl: 'https://api.fda.gov/example',
@@ -207,6 +212,29 @@ describe('interaction service', () => {
         await expect(syncInteraction('drug-a', 'drug-b', 'A', 'B')).resolves.toBe(cachedInteraction);
         expect(normalizeInteractionText).not.toHaveBeenCalled();
         expect(upsertInteraction).not.toHaveBeenCalled();
+    });
+
+    test('keeps a normalized interaction when its embedding provider is unavailable', async () => {
+        getInteractionPair.mockResolvedValueOnce(null);
+        fetchInteractionFromFDA.mockResolvedValueOnce({text: 'FDA evidence', source: 'openFDA'});
+        normalizeInteractionText.mockResolvedValueOnce({
+            riskLevel: 'moderate', description: 'Prolongation of prothrombin time', actionRequired: 'Monitor INR'
+        });
+        createVector.mockRejectedValueOnce(new ExternalServiceError('Embedding unavailable'));
+        upsertInteraction.mockResolvedValueOnce({description: 'Prolongation of prothrombin time'});
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        try {
+            await expect(syncInteraction('drug-a', 'drug-b', 'A', 'B')).resolves.toMatchObject({
+                description: 'Prolongation of prothrombin time'
+            });
+            expect(upsertInteraction).toHaveBeenCalledWith(expect.objectContaining({
+                searchText: 'Prolongation of prothrombin time\nMonitor INR\nmoderate',
+                embedding: []
+            }));
+        } finally {
+            consoleSpy.mockRestore();
+        }
     });
 
     test('uses DailyMed when FDA has no pair evidence and saves its provenance', async () => {

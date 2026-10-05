@@ -16,7 +16,7 @@ const getDrugsByIds = jest.fn();
 const getDrugByName = jest.fn();
 const updateDrug = jest.fn();
 const getDrug = jest.fn();
-const searchInteractionsByText = jest.fn();
+const searchInteractionsByVector = jest.fn();
 const getCachedDrugIds = jest.fn();
 const saveSearchResult = jest.fn();
 
@@ -49,7 +49,7 @@ jest.unstable_mockModule('../repository/drug-search-cache.repository.js', () => 
 }));
 
 jest.unstable_mockModule('../repository/interaction.repository.js', () => ({
-    searchInteractionsByText
+    searchInteractionsByVector
 }));
 
 const {createDrug: createDrugFromRequest, getSimilarDrugs, getSimilarDrugsWithStatus, searchDrugsBySymptom} = await import('./drug.service.js');
@@ -71,7 +71,7 @@ describe('drug service', () => {
         getDrugByName.mockReset();
         getCachedDrugIds.mockReset();
         saveSearchResult.mockReset();
-        searchInteractionsByText.mockReset();
+        searchInteractionsByVector.mockReset();
         updateDrug.mockReset();
     });
 
@@ -748,7 +748,7 @@ describe('drug service', () => {
 
         createVector.mockResolvedValueOnce([0.1, 0.2]);
         getDrug.mockResolvedValueOnce([matchingDrug]);
-        searchInteractionsByText.mockResolvedValueOnce([matchingInteraction]);
+        searchInteractionsByVector.mockResolvedValueOnce([matchingInteraction]);
 
         await expect(searchDrugsBySymptom('bleeding', ['drug-a', 'drug-b'])).resolves.toEqual({
             drugs: [matchingDrug],
@@ -756,6 +756,6 @@ describe('drug service', () => {
         });
 
         expect(getDrug).toHaveBeenCalledWith([0.1, 0.2], ['drug-a', 'drug-b']);
-        expect(searchInteractionsByText).toHaveBeenCalledWith('bleeding', ['drug-a', 'drug-b']);
+        expect(searchInteractionsByVector).toHaveBeenCalledWith([0.1, 0.2], ['drug-a', 'drug-b']);
     });
 });
