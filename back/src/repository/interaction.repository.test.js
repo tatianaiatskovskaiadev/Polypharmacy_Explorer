@@ -3,12 +3,15 @@ import {beforeEach, describe, expect, jest, test} from '@jest/globals';
 const findOne = jest.fn();
 const findOneAndUpdate = jest.fn();
 const aggregate = jest.fn();
+const listSearchIndexes = jest.fn();
+const toArray = jest.fn();
 
 jest.unstable_mockModule('../models/Interaction.model.js', () => ({
     Interaction: {
         findOne,
         findOneAndUpdate,
-        aggregate
+        aggregate,
+        collection: {listSearchIndexes}
     }
 }));
 
@@ -24,6 +27,8 @@ describe('interaction repository', () => {
         findOne.mockReset();
         findOneAndUpdate.mockReset();
         aggregate.mockReset();
+        listSearchIndexes.mockReset().mockReturnValue({toArray});
+        toArray.mockReset().mockResolvedValue([{name: 'interaction_vector_index', queryable: true}]);
     });
 
     test('canonical pair is stable for reversed ids', () => {
@@ -84,6 +89,15 @@ describe('interaction repository', () => {
 
     test('does not query vectors when fewer than two drugs are selected', async () => {
         await expect(searchInteractionsByVector([0.1], ['507f1f77bcf86cd799439011'])).resolves.toEqual([]);
+        expect(listSearchIndexes).not.toHaveBeenCalled();
+        expect(aggregate).not.toHaveBeenCalled();
+    });
+
+    test('reports a missing index instead of presenting false empty results', async () => {
+        toArray.mockResolvedValueOnce([]);
+        await expect(searchInteractionsByVector([0.1], [
+            '507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012'
+        ])).rejects.toThrow('Interaction search index is not ready');
         expect(aggregate).not.toHaveBeenCalled();
     });
 });

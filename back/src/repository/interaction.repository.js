@@ -1,5 +1,6 @@
 import {Interaction} from "../models/Interaction.model.js";
 import mongoose from 'mongoose';
+import {ExternalServiceError} from '../utils/errors.js';
 import {
     INTERACTION_RETRIEVAL_LIMIT,
     INTERACTION_SIMILARITY_THRESHOLD,
@@ -36,6 +37,10 @@ export const getInteractionPair = async (drugIdA, drugIdB) => {
 
 export const searchInteractionsByVector = async (vector, drugIds) => {
     if (drugIds.length < 2) return [];
+    const indexes = await Interaction.collection.listSearchIndexes().toArray();
+    if (!indexes.some(({name, queryable}) => name === INTERACTION_VECTOR_INDEX && queryable)) {
+        throw new ExternalServiceError('Interaction search index is not ready');
+    }
     const ids = drugIds.map((id) => new mongoose.Types.ObjectId(id));
     const pairCount = drugIds.length * (drugIds.length - 1) / 2;
     const limit = Math.min(pairCount, INTERACTION_RETRIEVAL_LIMIT);

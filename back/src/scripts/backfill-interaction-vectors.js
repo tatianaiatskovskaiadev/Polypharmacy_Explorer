@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import config from '../configuration/config.js';
 import {createVector} from '../services/ai.service.js';
 import {buildInteractionSearchText, needsInteractionEmbedding} from '../services/interaction-search.service.js';
-import {OPENAI_EMBEDDING_MODEL} from '../utils/constants.js';
+import {INTERACTION_VECTOR_INDEX, OPENAI_EMBEDDING_MODEL} from '../utils/constants.js';
 
 const isDryRun = process.argv.includes('--dry-run');
 let scanned = 0;
@@ -11,6 +11,25 @@ let updated = 0;
 try {
     await mongoose.connect(config.mongodb.uri, config.mongodb.db);
     const interactions = mongoose.connection.collection('interactions');
+    const indexes = await interactions.listSearchIndexes().toArray();
+    if (!indexes.some(({name}) => name === INTERACTION_VECTOR_INDEX)) {
+        if (isDryRun) {
+            console.log(`Missing Atlas Vector Search index: ${INTERACTION_VECTOR_INDEX}`);
+        } else {
+            await interactions.createSearchIndex({
+                name: INTERACTION_VECTOR_INDEX,
+                type: 'vectorSearch',
+                definition: {
+                    fields: [
+                        {type: 'vector', path: 'embedding', numDimensions: 1536, similarity: 'cosine'},
+                        {type: 'filter', path: 'drugA'},
+                        {type: 'filter', path: 'drugB'}
+                    ]
+                }
+            });
+            console.log(`Created ${INTERACTION_VECTOR_INDEX}; Atlas may need time to make it queryable.`);
+        }
+    }
     const cursor = interactions.find({}, {
         projection: {description: 1, actionRequired: 1, riskLevel: 1, searchText: 1, embedding: 1, embeddingModel: 1}
     });

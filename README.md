@@ -126,7 +126,7 @@ Interaction-edge symptom search requires another Atlas Vector Search index named
 }
 ```
 
-Newly analyzed interactions store an embedding of their summary, required action, and risk level. After creating the index, populate existing interactions with `cd back && npm run backfill:interaction-vectors -- --dry-run`, then `npm run backfill:interaction-vectors`. The backfill only embeds missing or changed text and can be rerun after interruption. Until the index is ready and old records are backfilled, interaction-edge symptom search cannot return those records.
+Newly analyzed interactions store an embedding of their summary, required action, and risk level. Run `cd back && npm run backfill:interaction-vectors -- --dry-run` to see missing vectors and index status, then `npm run backfill:interaction-vectors`. The command creates `interaction_vector_index` if absent, embeds missing or changed text, and can be rerun after interruption. Wait until Atlas marks the index queryable before searching. Without a ready index, the API reports an error rather than incorrectly claiming there are no matching interactions.
 
 For an online semantic regression check, set `INTERACTION_EVAL_DRUG_IDS` to at least three selected drug IDs whose saved edges include descriptions containing both “elevation of prothrombin time” and “prolongation of prothrombin time”, then run `cd back && npm run eval:interaction-search`. This calls OpenAI and Atlas, checks three related phrasings and one unrelated negative case, and may require adjusting the score threshold for your data. Unit tests check the query wiring but cannot prove model recall.
 
@@ -413,7 +413,7 @@ Latest local validation:
 
 | Command                              | Result                                 |
 |--------------------------------------|----------------------------------------|
-| `cd back && npm test -- --runInBand` | Passed: 35 suites, 159 tests           |
+| `cd back && npm test -- --runInBand` | Passed: 35 suites, 160 tests           |
 | `cd back && npm run eval:rag`       | Passed: 3 cases                        |
 | `cd back && npm run eval:agent`     | Passed: 2 cases                        |
 | `cd front && npm test`               | Passed: 15 tests                       |
