@@ -1,7 +1,9 @@
 import OpenAI from "openai";
 import {ExternalServiceError} from "../utils/errors.js";
 import {validateInteractionResult} from "../middlewares/validation.middleware.js";
+import {recordModelUsage, recordPromptVersion, recordValidation} from '../eval/metrics.js';
 import {
+    INTERACTION_ANALYSIS_VERSION,
     MAX_EMBEDDING_INPUT_LENGTH,
     OPENAI_CHAT_MODEL,
     OPENAI_EMBEDDING_ENCODING_FORMAT,
@@ -15,10 +17,13 @@ const getOpenAI = () => {
     return openai;
 };
 
-const callOpenAI = async (operation) => {
+const callOpenAI = async (operation, model) => {
     try {
-        return await operation();
+        const response = await operation();
+        recordModelUsage(response, model);
+        return response;
     } catch (error) {
+        recordModelUsage(null, model);
         if (error instanceof ExternalServiceError) {
             throw error;
         }
@@ -35,7 +40,7 @@ export const createVector = async (originalText) => {
         model: OPENAI_EMBEDDING_MODEL,
         input,
         encoding_format: OPENAI_EMBEDDING_ENCODING_FORMAT,
-    }))
+    }), OPENAI_EMBEDDING_MODEL)
     return embedding.data[0].embedding
 }
 
@@ -45,7 +50,7 @@ export const createVectors = async (texts) => {
         model: OPENAI_EMBEDDING_MODEL,
         input: texts,
         encoding_format: OPENAI_EMBEDDING_ENCODING_FORMAT
-    }));
+    }), OPENAI_EMBEDDING_MODEL);
     return [...response.data]
         .sort((first, second) => first.index - second.index)
         .map((item) => item.embedding);
@@ -68,7 +73,7 @@ export const answerFromEvidence = async (question, passages) => {
             }
         ],
         temperature: 0
-    }));
+    }), OPENAI_CHAT_MODEL);
     const answer = response.choices[0]?.message?.content;
     if (!answer?.trim()) throw new ExternalServiceError('LLM returned an empty answer');
     return answer.trim();
@@ -81,13 +86,14 @@ export const completeAgentTurn = async (messages, tools, toolChoice = 'auto') =>
         tools,
         tool_choice: toolChoice,
         temperature: 0
-    }));
+    }), OPENAI_CHAT_MODEL);
     const message = response.choices[0]?.message;
     if (!message) throw new ExternalServiceError('LLM returned no agent message');
     return message;
 };
 
 export const normalizeInteractionText = async (rawText, context = {}) => {
+    recordPromptVersion(`interaction-v${INTERACTION_ANALYSIS_VERSION}`);
     const pairContext = context.drugNameA && context.drugNameB
         ? `Analyze ONLY the interaction between "${context.drugNameA}" and "${context.drugNameB}".`
         : 'Analyze ONLY the specific drug pair implied by the provided text.';
@@ -147,18 +153,21 @@ export const normalizeInteractionText = async (rawText, context = {}) => {
             type: OPENAI_JSON_RESPONSE_FORMAT,
         },
         temperature: 0,
-    }));
+    }), OPENAI_CHAT_MODEL);
 
     let parsed;
     try {
         parsed = JSON.parse(response.choices[0].message.content);
     } catch {
+        recordValidation(false);
         throw new ExternalServiceError('LLM returned malformed JSON');
     }
 
     const {value, error} = validateInteractionResult(parsed);
     if (error) {
+        recordValidation(false);
         throw new ExternalServiceError(`LLM returned an invalid interaction result: ${error.message}`);
     }
+    recordValidation(true);
     return value;
 }

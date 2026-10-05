@@ -332,6 +332,22 @@ curl -X POST http://localhost:3000/agent/ask \
 
 The agent chooses among three server-side tools: selected drug lookup, pairwise interaction checking, and FDA passage retrieval. Its response adds `toolCalls` to the RAG answer format. Tool access is restricted to the selected drug IDs; the interaction check runs at most once and FDA retrieval at most twice per request. Answers without valid FDA passage citations return an insufficient-evidence response. Cached interaction summaries help the agent find evidence but are not treated as citations.
 
+## LLMOps Foundation
+
+AI requests emit an `ai_request_complete` JSON log with a `traceId` matching the `X-Request-Id` response header. It records the models used, prompt version, total latency, provider-reported input/output tokens, estimated USD cost, retrieval counts and scores, agent tool statuses and latencies, and result citation/validation flags. Questions, excerpts, answers, cookies, and API keys are not logged. `model` is a list because one request can use both an embedding model and a chat model. `citationCount` counts distinct returned sources; `validationPassed` records whether the citation gate accepted the result. For non-answer AI operations, answer-specific fields are `null`.
+
+Cost uses provider-reported usage and the current configured model rates: `gpt-4o-mini` input $0.15, cached input $0.075, output $0.60 per million tokens, and `text-embedding-3-small` input $0.02 per million tokens ([chat model pricing](https://developers.openai.com/api/docs/models/gpt-4o-mini), [embedding pricing](https://developers.openai.com/api/docs/models/text-embedding-3-small)). It is an estimate, not a billing record. If usage is missing or the model has no configured rate, token totals and cost are `null`. Review rates when changing models or prices.
+
+Run the deterministic RAG and agent evaluations locally:
+
+```bash
+cd back
+npm run eval:rag
+npm run eval:agent
+```
+
+The cases in `back/evals/` feed fixed retrieved passages and model responses into the real RAG and agent control flow. They check citation acceptance, insufficient-evidence behavior, source links, and tool execution without calling OpenAI or MongoDB. CI runs both commands. They are regression checks for those rules; they do not measure live model answer quality. A later live evaluation can add reviewed real-label cases and compare actual provider responses.
+
 Health check:
 
 ```bash
@@ -371,17 +387,20 @@ Current backend test coverage focuses on:
   rate limits for costly endpoints
 - normalized drug name duplicate protection
 - FDA-grounded RAG and tool-calling agent citation gates
+- deterministic RAG and agent evaluation cases plus isolated AI trace metrics
 
 Latest local validation:
 
 | Command                              | Result                                 |
 |--------------------------------------|----------------------------------------|
-| `cd back && npm test -- --runInBand` | Passed: 32 suites, 140 tests           |
+| `cd back && npm test -- --runInBand` | Passed: 33 suites, 145 tests           |
+| `cd back && npm run eval:rag`       | Passed: 3 cases                        |
+| `cd back && npm run eval:agent`     | Passed: 2 cases                        |
 | `cd front && npm test`               | Passed: 9 tests                        |
 | `cd front && npm run build`          | Passed, with a Vite chunk-size warning |
 | `cd front && npm run lint`           | Passed                                 |
 
-GitHub Actions runs backend tests and frontend tests/build/lint on pushes to `main` and on pull requests.
+GitHub Actions runs backend tests/evaluations and frontend tests/build/lint on pushes to `main` and on pull requests.
 
 ## Docker
 
@@ -429,7 +448,7 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 - Backend is JavaScript while frontend is TypeScript; backend TypeScript migration is a future improvement.
 - AWS deployment is not implemented in this repository; production email delivery requires external SMTP configuration.
 - The optional local development code is shared until rotated. Invitation issuance is a CLI operation. Failed mail jobs require an operator to investigate; users can request a new verification or reset email.
-- API requests have generated IDs and JSON completion/error logs without URLs, query strings, bodies, or headers. Service-level logs, metrics, and tracing are not fully implemented yet.
+- API requests have generated IDs and JSON completion/error logs without URLs, query strings, bodies, or headers. AI trace metrics are logged per request; persistent trace storage, dashboards, and alerts are not implemented yet.
 - Docker Compose is not included yet.
 - CI exists for backend and frontend tests plus frontend build/lint, but deployment/CD and Docker image build checks are
   not configured yet.
@@ -447,8 +466,8 @@ Docker Compose for MongoDB, backend, and frontend is planned but not yet include
 ## Roadmap
 
 1. Harden account delivery with a deployment-ready domain and proxy configuration, plus mail-worker monitoring and alerting.
-2. Strengthen evidence presentation and evaluation. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; test insufficient-evidence behavior and citation quality against a fixed set of example questions.
-3. Improve reliability and observability. Extend structured logging to service failures and add request/cost metrics. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
+2. Expand the deterministic citation evaluations with reviewed real-label cases and live model runs. Distinguish FDA, DailyMed, and PubChem coverage across search, graph, and answers; then add SSE streaming for agent progress.
+3. Improve reliability and observability with persistent traces, dashboards, and alerts. Move rate limiting and interaction deduplication to shared storage before running multiple API instances; consider a queue for long-running external calls.
 4. Expand frontend regression tests beyond search/add/remove flows and polish empty states, per-pair progress, and
    interaction details.
 5. Define AWS infrastructure as code for S3, CloudFront, Route 53, an API runtime, TLS, secrets, and monitoring. Extend GitHub Actions with Docker build, staging deployment, and post-deployment checks.

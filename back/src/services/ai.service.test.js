@@ -1,4 +1,5 @@
 import {beforeEach, describe, expect, jest, test} from '@jest/globals';
+import {getTraceMetrics, runWithTrace} from '../eval/metrics.js';
 const embeddingsCreate = jest.fn();
 const chatCompletionsCreate = jest.fn();
 
@@ -34,6 +35,26 @@ describe('ai service', () => {
             input: expect.any(String)
         }));
         expect(embeddingsCreate.mock.calls[0][0].input.length).toBe(8_000);
+    });
+
+    test('records provider usage for an embedding request', async () => {
+        embeddingsCreate.mockResolvedValueOnce({
+            model: 'text-embedding-3-small',
+            usage: {prompt_tokens: 50, total_tokens: 50},
+            data: [{embedding: [0.1, 0.2]}]
+        });
+
+        const trace = await runWithTrace('embedding-trace', async () => {
+            await createVector('aspirin');
+            return getTraceMetrics();
+        });
+
+        expect(trace).toEqual(expect.objectContaining({
+            model: ['text-embedding-3-small'],
+            inputTokens: 50,
+            outputTokens: 0,
+            estimatedCost: 0.000001
+        }));
     });
 
     test('maps OpenAI embedding failures to ExternalServiceError', async () => {

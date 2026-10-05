@@ -1,6 +1,7 @@
 import {completeAgentTurn} from './ai.service.js';
 import {AGENT_TOOLS, createAgentTools} from './agent-tools.service.js';
 import {AGENT_MAX_TOOL_CALLS, AGENT_MAX_TOOL_ROUNDS, AGENT_PROMPT_VERSION} from '../utils/constants.js';
+import {recordPromptVersion, recordResult, recordToolCall} from '../eval/metrics.js';
 
 const INSUFFICIENT_EVIDENCE = 'The indexed FDA label excerpts do not provide enough evidence to answer this question.';
 
@@ -18,7 +19,7 @@ const buildResult = (answer, sources, toolCalls) => {
     const citedIndices = [...answer.matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1]) - 1);
     const grounded = citedIndices.length > 0 &&
         citedIndices.every((index) => index >= 0 && index < sources.length);
-    return {
+    const result = {
         answer: grounded ? answer : INSUFFICIENT_EVIDENCE,
         sources: grounded
             ? [...new Set(citedIndices)].map((index) => {
@@ -36,10 +37,13 @@ const buildResult = (answer, sources, toolCalls) => {
         toolCalls,
         promptVersion: AGENT_PROMPT_VERSION
     };
+    recordResult(result, grounded);
+    return result;
 };
 
-export const askAgent = async (question, drugIds) => {
-    const tools = createAgentTools(drugIds);
+export const askAgent = async (question, drugIds, dependencies = {completeAgentTurn, createAgentTools}) => {
+    recordPromptVersion(AGENT_PROMPT_VERSION);
+    const tools = dependencies.createAgentTools(drugIds);
     const toolCalls = [];
     const messages = [
         {
@@ -50,7 +54,7 @@ export const askAgent = async (question, drugIds) => {
     ];
 
     for (let round = 0; round < AGENT_MAX_TOOL_ROUNDS; round++) {
-        const message = await completeAgentTurn(messages, AGENT_TOOLS, round === 0 ? 'required' : 'auto');
+        const message = await dependencies.completeAgentTurn(messages, AGENT_TOOLS, round === 0 ? 'required' : 'auto');
         const calls = message.tool_calls ?? [];
         if (calls.length === 0) return buildResult(message.content ?? '', tools.sources, toolCalls);
         if (toolCalls.length + calls.length > AGENT_MAX_TOOL_CALLS) break;
@@ -59,17 +63,20 @@ export const askAgent = async (question, drugIds) => {
         for (const call of calls) {
             const name = call.function?.name;
             const args = parseArguments(call.function?.arguments ?? '');
+            const startedAt = performance.now();
             let output;
             try {
                 output = args ? await tools.execute(name, args) : {error: 'Invalid tool arguments'};
             } catch (error) {
                 output = {error: error.name === 'ExternalServiceError' ? 'External service unavailable' : 'Tool failed'};
             }
-            toolCalls.push({name, status: output.error ? 'error' : 'ok'});
+            const status = output.error ? 'error' : 'ok';
+            toolCalls.push({name, status});
+            recordToolCall(name, status, Math.round(performance.now() - startedAt));
             messages.push({role: 'tool', tool_call_id: call.id, content: JSON.stringify(output)});
         }
     }
 
-    const finalMessage = await completeAgentTurn(messages, AGENT_TOOLS, 'none');
+    const finalMessage = await dependencies.completeAgentTurn(messages, AGENT_TOOLS, 'none');
     return buildResult(finalMessage.content ?? '', tools.sources, toolCalls);
 };

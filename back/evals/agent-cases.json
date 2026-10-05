@@ -1,0 +1,26 @@
+[
+  {
+    "id": "agent-grounded-search",
+    "question": "What does the selected label say about bleeding?",
+    "drugIds": ["drug-a"],
+    "passages": [
+      {"drugName": "Drug A", "section": "warnings", "text": "The label warns about bleeding.", "sourceUrl": "https://example.org/label/a", "score": 0.9}
+    ],
+    "turns": [
+      {"content": null, "tool_calls": [{"id": "call-1", "type": "function", "function": {"name": "search_fda_passages", "arguments": "{\"query\":\"bleeding\"}"}}]},
+      {"content": "The label warns about bleeding [1]."}
+    ],
+    "expected": {"citationCount": 1, "insufficientEvidence": false, "validationPassed": true, "sourceUrls": ["https://example.org/label/a"], "toolNames": ["search_fda_passages"]}
+  },
+  {
+    "id": "agent-no-evidence",
+    "question": "Is the combination safe?",
+    "drugIds": ["drug-a", "drug-b"],
+    "passages": [],
+    "turns": [
+      {"content": null, "tool_calls": [{"id": "call-2", "type": "function", "function": {"name": "search_fda_passages", "arguments": "{\"query\":\"combination safety\"}"}}]},
+      {"content": "The combination is safe."}
+    ],
+    "expected": {"citationCount": 0, "insufficientEvidence": true, "validationPassed": false, "toolNames": ["search_fda_passages"]}
+  }
+]

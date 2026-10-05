@@ -1,0 +1,29 @@
+[
+  {
+    "id": "grounded-warning",
+    "question": "What does the selected label say about bleeding risk?",
+    "drugIds": ["drug-a"],
+    "passages": [
+      {"drugName": "Drug A", "section": "warnings", "text": "The label warns about bleeding.", "sourceUrl": "https://example.org/label/a", "score": 0.9}
+    ],
+    "draft": "The label warns about bleeding [1].",
+    "expected": {"citationCount": 1, "insufficientEvidence": false, "validationPassed": true, "sourceUrls": ["https://example.org/label/a"]}
+  },
+  {
+    "id": "out-of-range-citation",
+    "question": "What does the selected label say?",
+    "drugIds": ["drug-a"],
+    "passages": [
+      {"drugName": "Drug A", "section": "warnings", "text": "A warning is present.", "sourceUrl": "https://example.org/label/a", "score": 0.8}
+    ],
+    "draft": "Unsupported claim [2].",
+    "expected": {"citationCount": 0, "insufficientEvidence": true, "validationPassed": false}
+  },
+  {
+    "id": "no-passages",
+    "question": "What is known about this combination?",
+    "drugIds": ["drug-a", "drug-b"],
+    "passages": [],
+    "expected": {"citationCount": 0, "insufficientEvidence": true, "validationPassed": true}
+  }
+]

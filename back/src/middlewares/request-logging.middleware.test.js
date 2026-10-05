@@ -2,6 +2,7 @@ import {afterAll, afterEach, describe, expect, jest, test} from '@jest/globals';
 import express from 'express';
 import request from 'supertest';
 import {requestLogging} from './request-logging.middleware.js';
+import {recordModelUsage, recordPromptVersion, recordResult, recordRetrieval} from '../eval/metrics.js';
 
 describe('request logging middleware', () => {
     const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -29,5 +30,30 @@ describe('request logging middleware', () => {
         }));
         expect(logSpy.mock.calls[0][0]).not.toContain('private-value');
         expect(logSpy.mock.calls[0][0]).not.toContain('/check');
+    });
+
+    test('logs AI metrics with the same request ID without logging prompt text', async () => {
+        const app = express();
+        app.use(requestLogging);
+        app.post('/rag/answer', (req, res) => {
+            recordPromptVersion('rag-answer-v1');
+            recordModelUsage({usage: {prompt_tokens: 10, completion_tokens: 2}}, 'gpt-4o-mini');
+            recordRetrieval([{score: 0.9}]);
+            recordResult({sources: [{number: 1}]}, true);
+            res.json({answer: 'private answer'});
+        });
+
+        const response = await request(app).post('/rag/answer').send({question: 'private question'});
+        const entries = logSpy.mock.calls.map(([line]) => JSON.parse(line));
+        const trace = entries.find(({event}) => event === 'ai_request_complete');
+
+        expect(trace).toEqual(expect.objectContaining({
+            traceId: response.headers['x-request-id'],
+            promptVersion: 'rag-answer-v1',
+            inputTokens: 10,
+            outputTokens: 2,
+            result: {citationCount: 1, insufficientEvidence: false, validationPassed: true}
+        }));
+        expect(JSON.stringify(entries)).not.toMatch(/private question|private answer/);
     });
 });

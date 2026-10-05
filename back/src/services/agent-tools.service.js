@@ -2,6 +2,7 @@ import {createVector} from './ai.service.js';
 import * as drugRepository from '../repository/drug.repository.js';
 import * as passageRepository from '../repository/fda-passage.repository.js';
 import * as interactionService from './interaction.service.js';
+import {recordRetrieval} from '../eval/metrics.js';
 
 export const AGENT_TOOLS = [
     {
@@ -78,6 +79,7 @@ export const createAgentTools = (drugIds) => {
             searchCount++;
             const vector = await createVector(args.query.trim());
             const passages = await passageRepository.searchPassages(vector, drugIds);
+            recordRetrieval(passages);
             const matches = passages.map((passage) => {
                 const passageId = String(passage._id);
                 let source = sources.find((item) => item.passageId === passageId);

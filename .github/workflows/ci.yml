@@ -37,6 +37,9 @@ jobs:
       - name: Run backend tests
         run: npm test
 
+      - name: Run deterministic RAG and agent evaluations
+        run: npm run eval:rag && npm run eval:agent
+
   frontend:
     name: Frontend build and lint
     runs-on: ubuntu-24.04
