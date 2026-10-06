@@ -2,7 +2,7 @@ import {afterAll, afterEach, describe, expect, jest, test} from '@jest/globals';
 import express from 'express';
 import request from 'supertest';
 import {requestLogging} from './request-logging.middleware.js';
-import {recordModelUsage, recordPromptVersion, recordResult, recordRetrieval} from '../eval/metrics.js';
+import {recordModelUsage, recordPromptVersion, recordResult, recordRetrieval} from '../features/ai/eval/metrics.js';
 
 describe('request logging middleware', () => {
     const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});

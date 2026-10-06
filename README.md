@@ -59,14 +59,15 @@ flowchart LR
     Agent --> OpenAI
 ```
 
-Backend structure:
+Backend code is grouped by feature under `back/src/features/`:
 
-- `routes` define API endpoints.
-- `controllers` keep HTTP request/response handling thin.
-- `services` contain FDA, DailyMed, PubChem, AI, interaction, RAG, agent, and drug workflows.
-- `repository` isolates MongoDB queries and canonical pair persistence.
-- `models` define Mongoose schemas and indexes.
-- `middlewares` handle validation and normalized errors.
+- `auth/` owns accounts, sessions, invitations, registration, and its auth middleware.
+- `drugs/` owns drug search, FDA/DailyMed/PubChem discovery, label passages, registry import, and name normalization.
+- `interactions/` owns interaction summaries, vector search, and embedding backfill.
+- `ai/` owns RAG, agent execution, OpenAI calls, and their evaluations.
+- `mail/` owns the outbox, SMTP delivery, and worker; `system/` owns the health endpoint.
+
+Each feature keeps its applicable `routes/`, `controllers/`, `services/`, `repository/`, and `models/` directories together with related tests. HTTP requests still follow `route → controller → service → repository → model`: the route selects the handler, the controller reads request data and writes the response, the service applies the rules, and the repository queries MongoDB. Shared configuration, HTTP middleware, and general helpers stay at the `src/` root. For example, registration rules live in `back/src/features/auth/services/registration.service.js`; the controller only sets the session cookie and response. CLI scripts and the mail worker start database connections as entry points, then call services rather than querying collections themselves.
 
 The Vite SPA is designed for static hosting on S3 behind CloudFront, with Route 53 for DNS. The Express API owns authentication and session validation; AWS deployment is not implemented yet. For a separate API hostname, use a custom domain under the same site as the SPA so its `SameSite=Lax` session cookie works with credentialed browser requests. Configure that SPA origin in `CORS_ORIGIN`.
 
@@ -413,7 +414,7 @@ Latest local validation:
 
 | Command                              | Result                                 |
 |--------------------------------------|----------------------------------------|
-| `cd back && npm test -- --runInBand` | Passed: 35 suites, 160 tests           |
+| `cd back && npm test -- --runInBand` | Passed: 39 suites, 171 tests           |
 | `cd back && npm run eval:rag`       | Passed: 3 cases                        |
 | `cd back && npm run eval:agent`     | Passed: 2 cases                        |
 | `cd front && npm test`               | Passed: 15 tests                       |

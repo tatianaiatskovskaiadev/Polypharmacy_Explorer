@@ -72,3 +72,9 @@ export const ETL_BATCH_SIZE = 2000;
 
 export const EXPENSIVE_ENDPOINT_RATE_LIMIT_WINDOW_MS = 60_000;
 export const EXPENSIVE_ENDPOINT_RATE_LIMIT_MAX_REQUESTS = 30;
+
+export const MAIL_LEASE_MS = 120_000;
+export const MAIL_RETRY_BASE_MS = 60_000;
+export const MAIL_MAX_ATTEMPTS = 5;
+export const MAIL_BATCH_SIZE = 10;
+export const MAIL_POLL_MS = 5_000;

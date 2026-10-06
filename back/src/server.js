@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import config, {shouldAutostartMailWorker, validateRuntimeConfig} from "./configuration/config.js";
 import app from "./app.js";
-import {startMailWorker} from './services/mail-queue.service.js';
+import {startMailWorker} from './features/mail/services/mail-queue.service.js';
 
 async function startServer() {
     try {

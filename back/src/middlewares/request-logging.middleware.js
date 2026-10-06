@@ -1,10 +1,6 @@
 import {randomUUID} from 'crypto';
-import {currentTrace, getTraceMetrics, runWithTrace} from '../eval/metrics.js';
-
-export const logEvent = (level, event, fields = {}) => {
-    const entry = {timestamp: new Date().toISOString(), level, event, ...fields};
-    console[level === 'error' ? 'error' : 'log'](JSON.stringify(entry));
-};
+import {currentTrace, getTraceMetrics, runWithTrace} from '../features/ai/eval/metrics.js';
+import {logEvent} from '../utils/logging.js';
 
 export const requestLogging = (req, res, next) => {
     const startedAt = performance.now();

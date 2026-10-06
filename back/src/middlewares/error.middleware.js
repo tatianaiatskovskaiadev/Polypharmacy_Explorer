@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import ApiError from '../utils/errors.js';
-import {logEvent} from './request-logging.middleware.js';
+import {logEvent} from '../utils/logging.js';
 
 const errorResponse = (res, req, status, error, message) => res.status(status).json({
     "timestamp": new Date().toISOString(),

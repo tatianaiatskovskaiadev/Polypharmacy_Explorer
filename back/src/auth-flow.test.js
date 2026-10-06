@@ -1,6 +1,5 @@
-import {afterAll, afterEach, describe, expect, jest, test} from '@jest/globals';
+import {afterEach, describe, expect, jest, test} from '@jest/globals';
 import request from 'supertest';
-import mongoose from 'mongoose';
 import config from './configuration/config.js';
 import {ConflictError, ForbiddenError} from './utils/errors.js';
 
@@ -9,17 +8,12 @@ const csrfToken = 'a'.repeat(64);
 let sessionActive = false;
 let emailVerifiedAt;
 let sessionRole = 'user';
-const createUser = jest.fn().mockResolvedValue(user);
-const claimInvitation = jest.fn().mockResolvedValue({id: 'invitation-1', consumedAt: new Date()});
-const releaseInvitation = jest.fn().mockResolvedValue(undefined);
-const sendVerificationEmail = jest.fn().mockResolvedValue(undefined);
+const registerAccount = jest.fn().mockResolvedValue(user);
+jest.unstable_mockModule('./features/auth/services/registration.service.js', () => ({registerAccount}));
 
-jest.unstable_mockModule('./services/invitation.service.js', () => ({claimInvitation, releaseInvitation}));
-
-jest.unstable_mockModule('./services/auth.service.js', () => ({
+jest.unstable_mockModule('./features/auth/services/auth.service.js', () => ({
     SESSION_COOKIE_NAME: 'pe_session',
     SESSION_DURATION_MS: 7 * 24 * 60 * 60 * 1000,
-    createUser,
     authenticateUser: jest.fn().mockResolvedValue(user),
     createSession: jest.fn().mockImplementation(async () => {
         sessionActive = true;
@@ -31,7 +25,6 @@ jest.unstable_mockModule('./services/auth.service.js', () => ({
             : null
     )),
     deleteSession: jest.fn().mockImplementation(async () => { sessionActive = false; }),
-    sendVerificationEmail,
     resendVerificationEmail: jest.fn().mockResolvedValue(undefined),
     verifyEmail: jest.fn().mockResolvedValue(undefined),
     requestPasswordReset: jest.fn().mockResolvedValue(undefined),
@@ -50,23 +43,15 @@ const {default: app} = await import('./app.js');
 
 describe('API authentication flow', () => {
     const previousCode = config.registrationCode;
-    const transactionSpy = jest.spyOn(mongoose.connection, 'transaction')
-        .mockImplementation((callback) => callback({id: 'test-transaction'}));
-
-    afterAll(() => transactionSpy.mockRestore());
-
     afterEach(() => {
         config.registrationCode = previousCode;
         sessionActive = false;
         emailVerifiedAt = undefined;
         sessionRole = 'user';
-        createUser.mockReset().mockResolvedValue(user);
-        claimInvitation.mockClear();
-        releaseInvitation.mockClear();
-        sendVerificationEmail.mockClear();
+        registerAccount.mockReset().mockResolvedValue(user);
     });
 
-    test('requires a one-time invitation in production even when the shared code matches', async () => {
+    test('passes registration data to the service', async () => {
         const previousEnvironment = process.env.NODE_ENV;
         process.env.NODE_ENV = 'production';
         config.registrationCode = 'shared-code';
@@ -75,7 +60,7 @@ describe('API authentication flow', () => {
                 email: user.email, password: 'a-long-unique-password', registrationCode: 'shared-code'
             });
             expect(registration.status).toBe(200);
-            expect(claimInvitation).toHaveBeenCalledWith(user.email, 'shared-code');
+            expect(registerAccount).toHaveBeenCalledWith(user.email, 'a-long-unique-password', 'shared-code');
         } finally {
             if (previousEnvironment === undefined) delete process.env.NODE_ENV;
             else process.env.NODE_ENV = previousEnvironment;
@@ -83,30 +68,30 @@ describe('API authentication flow', () => {
     });
 
     test('rejects an invalid invitation before creating an account', async () => {
-        claimInvitation.mockRejectedValueOnce(new ForbiddenError('Invalid invitation'));
+        registerAccount.mockRejectedValueOnce(new ForbiddenError('Invalid invitation'));
         const registration = await request(app).post('/auth/register').send({
             email: user.email, password: 'a-long-unique-password', registrationCode: 'invalid-code'
         });
         expect(registration.status).toBe(403);
-        expect(createUser).not.toHaveBeenCalled();
+        expect(registerAccount).toHaveBeenCalledTimes(1);
     });
 
-    test('releases a claimed invitation when account creation fails', async () => {
-        createUser.mockRejectedValueOnce(new ConflictError('Existing account'));
+    test('returns a service conflict without opening a session', async () => {
+        registerAccount.mockRejectedValueOnce(new ConflictError('Existing account'));
         const registration = await request(app).post('/auth/register').send({
             email: user.email, password: 'a-long-unique-password', registrationCode: 'valid-code'
         });
         expect(registration.status).toBe(409);
-        expect(releaseInvitation).toHaveBeenCalledWith(expect.objectContaining({id: 'invitation-1'}));
+        expect(sessionActive).toBe(false);
     });
 
-    test('releases a claimed invitation when the transactional mail enqueue fails', async () => {
-        sendVerificationEmail.mockRejectedValueOnce(new Error('outbox unavailable'));
+    test('returns a service failure without opening a session', async () => {
+        registerAccount.mockRejectedValueOnce(new Error('outbox unavailable'));
         const registration = await request(app).post('/auth/register').send({
             email: user.email, password: 'a-long-unique-password', registrationCode: 'valid-code'
         });
         expect(registration.status).toBe(500);
-        expect(releaseInvitation).toHaveBeenCalledWith(expect.objectContaining({id: 'invitation-1'}));
+        expect(sessionActive).toBe(false);
     });
 
     test('registers, protects writes with CSRF, and invalidates the session on logout', async () => {
@@ -118,9 +103,7 @@ describe('API authentication flow', () => {
         });
         expect(registration.status).toBe(200);
         expect(registration.body).toEqual({user, csrfToken});
-        expect(transactionSpy).toHaveBeenCalled();
-        expect(createUser).toHaveBeenCalledWith(user.email, 'a-long-unique-password', {id: 'test-transaction'});
-        expect(sendVerificationEmail).toHaveBeenCalledWith(user, {id: 'test-transaction'});
+        expect(registerAccount).toHaveBeenCalledWith(user.email, 'a-long-unique-password', config.registrationCode);
         expect(registration.headers['set-cookie'][0]).toContain('HttpOnly');
         expect(registration.headers['set-cookie'][0]).toContain('SameSite=Lax');
         const cookie = registration.headers['set-cookie'][0].split(';')[0];
